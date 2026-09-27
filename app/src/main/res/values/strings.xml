@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Speed Test</string>
+    <string name="start">Start</string>
+    <string name="stop">Stop</string>
+    <string name="selected_server">Selected server</string>
+    <string name="ping_response_time">PING response time</string>
+    <string name="ping_value">%1$.1f ms</string>
+    <string name="average_speed">Average download speed</string>
+    <string name="time_remaining">%1$d seconds remaining</string>
+    <string name="download_speed">Download speed</string>
+    <string name="mbps">Mbps</string>
+    <string name="demo_data">Demo data</string>
+    <string name="finding_nodes">Finding nearby servers...</string>
+    <string name="pinging">Pinging servers...</string>
+    <string name="measuring">Measuring...</string>
+    <string name="finished">Completed</string>
+    <string name="no_servers">No nearby servers found</string>
+    <string name="no_ping_replies">None of the servers responded to ping</string>
+    <string name="no_measurements">The speed test ended before completion</string>
+    <string name="test_error">Unable to complete the test</string>
+</resources>
