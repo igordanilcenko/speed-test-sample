@@ -4,11 +4,12 @@ import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.model.SpeedMeasurement
 import com.igordanilcenko.speedtest.domain.SpeedTestRepository
 import kotlinx.coroutines.delay
+import com.igordanilcenko.speedtest.domain.model.Coordinates
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 
 class StubSpeedTestRepository : SpeedTestRepository {
-    override suspend fun getNearestNodes(): List<Node> {
+    override suspend fun getNearestNodes(coordinates: Coordinates): List<Node> {
         delay(500)
         return listOf(12, 24, 38, 56, 79).mapIndexed { index, distance ->
             Node("demo-$index", "Demo ${index + 1}", distance)

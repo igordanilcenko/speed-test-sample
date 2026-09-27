@@ -14,6 +14,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 const val TEST_DURATION_MILLIS = 15_000L
 
 sealed interface SpeedTestUpdate {
+    data object Locating : SpeedTestUpdate
     data object FindingNodes : SpeedTestUpdate
     data object Pinging : SpeedTestUpdate
     data class Measuring(val server: SelectedServer, val sample: SpeedMeasurement? = null) : SpeedTestUpdate
@@ -23,10 +24,15 @@ sealed interface SpeedTestUpdate {
 enum class TestFailure { NoServers, NoPingReplies, NoMeasurements }
 class SpeedTestException(val failure: TestFailure) : Exception(failure.name)
 
-class RunSpeedTest(private val repository: SpeedTestRepository) {
+class RunSpeedTest(
+    private val repository: SpeedTestRepository,
+    private val locationRepository: LocationRepository,
+) {
     operator fun invoke(): Flow<SpeedTestUpdate> = flow {
+        emit(SpeedTestUpdate.Locating)
+        val coordinates = locationRepository.getCurrentCoordinates()
         emit(SpeedTestUpdate.FindingNodes)
-        val nodes = withTimeout(10_000) { repository.getNearestNodes().take(5) }
+        val nodes = withTimeout(10_000) { repository.getNearestNodes(coordinates).take(5) }
         if (nodes.isEmpty()) throw SpeedTestException(TestFailure.NoServers)
         emit(SpeedTestUpdate.Pinging)
         val server = coroutineScope {

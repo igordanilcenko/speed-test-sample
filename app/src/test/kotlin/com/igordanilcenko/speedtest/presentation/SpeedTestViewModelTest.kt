@@ -1,6 +1,10 @@
 package com.igordanilcenko.speedtest.presentation
 
 import androidx.lifecycle.ViewModelStore
+import com.igordanilcenko.speedtest.domain.LocationRepository
+import com.igordanilcenko.speedtest.domain.LocationException
+import com.igordanilcenko.speedtest.domain.LocationFailure
+import com.igordanilcenko.speedtest.domain.model.Coordinates
 import com.igordanilcenko.speedtest.data.StubSpeedTestRepository
 import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.RunSpeedTest
@@ -34,8 +38,8 @@ class SpeedTestViewModelTest {
     @After fun tearDown() { Dispatchers.resetMain() }
 
     @Test fun `selects minimum ping and runs download for fifteen seconds after discovery`() = runTest {
-        val vm = SpeedTestViewModel(RunSpeedTest(StubSpeedTestRepository()))
-        assertEquals(SpeedTestUiState(), vm.state.value)
+        val vm = newViewModel(StubSpeedTestRepository())
+        assertEquals(SpeedTestUiState(locationPermission = LocationPermission.Granted), vm.state.value)
         vm.onIntent(SpeedTestIntent.Start)
         runCurrent()
         assertEquals(TestPhase.FindingNodes, vm.state.value.phase)
@@ -60,21 +64,21 @@ class SpeedTestViewModelTest {
     @Test fun `stop and screen exit reset every active phase without later updates`() = runTest {
         for (intent in listOf(SpeedTestIntent.Stop, SpeedTestIntent.ScreenLeft)) {
             for (elapsed in listOf(0L, 500L, 2_000L)) {
-                val vm = SpeedTestViewModel(RunSpeedTest(StubSpeedTestRepository()))
+                val vm = newViewModel(StubSpeedTestRepository())
                 vm.onIntent(SpeedTestIntent.Start)
                 advanceTimeBy(elapsed)
                 runCurrent()
                 vm.onIntent(intent)
-                assertEquals(SpeedTestUiState(), vm.state.value)
+                assertEquals(SpeedTestUiState(locationPermission = LocationPermission.Granted), vm.state.value)
                 advanceUntilIdle()
-                assertEquals(SpeedTestUiState(), vm.state.value)
+                assertEquals(SpeedTestUiState(locationPermission = LocationPermission.Granted), vm.state.value)
             }
         }
     }
 
     @Test fun `ignores double start and starts fresh immediately after stop`() = runTest {
         val repository = RecordingRepository()
-        val vm = SpeedTestViewModel(RunSpeedTest(repository))
+        val vm = newViewModel(repository)
         vm.onIntent(SpeedTestIntent.Start)
         vm.onIntent(SpeedTestIntent.Start)
         runCurrent()
@@ -88,7 +92,7 @@ class SpeedTestViewModelTest {
 
     @Test fun `clearing viewmodel cancels download`() = runTest {
         val repository = RecordingRepository()
-        val vm = SpeedTestViewModel(RunSpeedTest(repository))
+        val vm = newViewModel(repository)
         val store = ViewModelStore().apply { put("test", vm) }
         vm.onIntent(SpeedTestIntent.Start)
         runCurrent()
@@ -102,7 +106,7 @@ class SpeedTestViewModelTest {
 
     @Test fun `pings all five nodes and skips unreachable nodes`() = runTest {
         val repository = RecordingRepository(unreachable = setOf("0", "2"))
-        val vm = SpeedTestViewModel(RunSpeedTest(repository))
+        val vm = newViewModel(repository)
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
         assertEquals(setOf("0", "1", "2", "3", "4"), repository.pinged.toSet())
@@ -112,7 +116,7 @@ class SpeedTestViewModelTest {
 
     @Test fun `reports when all pings fail without starting download`() = runTest {
         val repository = RecordingRepository(unreachable = (0..4).map { "$it" }.toSet())
-        val vm = SpeedTestViewModel(RunSpeedTest(repository))
+        val vm = newViewModel(repository)
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
         assertEquals(TestPhase.Error, vm.state.value.phase)
@@ -122,7 +126,7 @@ class SpeedTestViewModelTest {
 
     @Test fun `reports empty directory and allows retry`() = runTest {
         val repository = RecordingRepository(empty = true)
-        val vm = SpeedTestViewModel(RunSpeedTest(repository))
+        val vm = newViewModel(repository)
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
         assertEquals(TestFailure.NoServers, vm.state.value.failure)
@@ -134,9 +138,9 @@ class SpeedTestViewModelTest {
 
     @Test fun `request timeout becomes error rather than leaving progress running`() = runTest {
         val repository = object : RecordingRepository() {
-            override suspend fun getNearestNodes(): List<Node> = awaitCancellation()
+            override suspend fun getNearestNodes(coordinates: Coordinates): List<Node> = awaitCancellation()
         }
-        val vm = SpeedTestViewModel(RunSpeedTest(repository))
+        val vm = newViewModel(repository)
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
         assertEquals(TestPhase.Error, vm.state.value.phase)
@@ -147,17 +151,141 @@ class SpeedTestViewModelTest {
         assertEquals(80.0, SpeedMeasurement(120.0, 100_000_000, 10_000).averageMbps, 0.0)
     }
 
+    @Test fun `permission denied blocks start and survives screen exit`() = runTest {
+        val repository = RecordingRepository()
+        val vm = newViewModel(repository)
+        vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Denied, true))
+        vm.onIntent(SpeedTestIntent.Start)
+        vm.onIntent(SpeedTestIntent.ScreenLeft)
+        advanceUntilIdle()
+        assertFalse(vm.state.value.canStart)
+        assertEquals(LocationPermission.Denied, vm.state.value.locationPermission)
+        assertEquals(0, repository.discoveries)
+    }
+
+    @Test fun `settings grant enables start without starting automatically`() = runTest {
+        val repository = RecordingRepository()
+        val vm = newViewModel(repository)
+        vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Denied, true))
+        vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, true))
+        advanceUntilIdle()
+        assertTrue(vm.state.value.canStart)
+        assertEquals(0, repository.discoveries)
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        assertEquals(TestPhase.Finished, vm.state.value.phase)
+    }
+
+    @Test fun `location off blocks start until enabled`() = runTest {
+        val vm = newViewModel(RecordingRepository())
+        vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, false))
+        assertFalse(vm.state.value.canStart)
+        vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, true))
+        assertTrue(vm.state.value.canStart)
+    }
+
+    @Test fun `coordinates reach discovery before any ping or download`() = runTest {
+        val repository = RecordingRepository()
+        val coordinates = Coordinates(50.0, 14.0)
+        val location = object : LocationRepository {
+            override suspend fun getCurrentCoordinates(): Coordinates {
+                delay(1_000)
+                return coordinates
+            }
+        }
+        val vm = newViewModel(repository, location)
+        vm.onIntent(SpeedTestIntent.Start)
+        runCurrent()
+        assertEquals(TestPhase.Locating, vm.state.value.phase)
+        assertEquals(0, repository.discoveries)
+        assertTrue(repository.pinged.isEmpty())
+        advanceUntilIdle()
+        assertEquals(coordinates, repository.receivedCoordinates)
+    }
+
+    @Test fun `screen exit cancels coordinate acquisition and never starts discovery`() = runTest {
+        var cancelled = false
+        val repository = RecordingRepository()
+        val location = object : LocationRepository {
+            override suspend fun getCurrentCoordinates(): Coordinates {
+                try { awaitCancellation() } finally { cancelled = true }
+            }
+        }
+        val vm = newViewModel(repository, location)
+        vm.onIntent(SpeedTestIntent.Start)
+        runCurrent()
+        vm.onIntent(SpeedTestIntent.ScreenLeft)
+        advanceUntilIdle()
+        assertTrue(cancelled)
+        assertEquals(TestPhase.Idle, vm.state.value.phase)
+        assertEquals(0, repository.discoveries)
+    }
+
+    @Test fun `location errors do not start server discovery`() = runTest {
+        for (failure in LocationFailure.entries) {
+            val repository = RecordingRepository()
+            val location = object : LocationRepository {
+                override suspend fun getCurrentCoordinates(): Coordinates = throw LocationException(failure)
+            }
+            val vm = newViewModel(repository, location)
+            vm.onIntent(SpeedTestIntent.Start)
+            advanceUntilIdle()
+            assertEquals(failure, vm.state.value.locationFailure)
+            assertEquals(0, repository.discoveries)
+            assertEquals(failure == LocationFailure.Unavailable, vm.state.value.canStart)
+        }
+    }
+
+    @Test fun `revoking permission cancels an active test`() = runTest {
+        val repository = RecordingRepository()
+        val vm = newViewModel(repository)
+        vm.onIntent(SpeedTestIntent.Start)
+        runCurrent()
+        assertTrue(repository.downloading)
+        vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Denied, true))
+        advanceUntilIdle()
+        assertFalse(repository.downloading)
+        assertFalse(vm.state.value.canStart)
+        assertEquals(TestPhase.Idle, vm.state.value.phase)
+    }
+
+    @Test fun `unchecked permission never starts location acquisition`() = runTest {
+        var requested = false
+        val location = object : LocationRepository {
+            override suspend fun getCurrentCoordinates(): Coordinates {
+                requested = true
+                return Coordinates(0.0, 0.0)
+            }
+        }
+        val vm = SpeedTestViewModel(RunSpeedTest(RecordingRepository(), location))
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        assertFalse(requested)
+        assertFalse(vm.state.value.canStart)
+    }
+
+    private fun newViewModel(
+        repository: SpeedTestRepository,
+        location: LocationRepository = object : LocationRepository {
+            override suspend fun getCurrentCoordinates() = Coordinates(0.0, 0.0)
+        },
+    ): SpeedTestViewModel = SpeedTestViewModel(RunSpeedTest(repository, location)).apply {
+        onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, true))
+    }
+
     private open class RecordingRepository(
         var empty: Boolean = false,
         private val unreachable: Set<String> = emptySet(),
     ) : SpeedTestRepository {
         var discoveries = 0
+        var receivedCoordinates: Coordinates? = null
         val pinged = mutableListOf<String>()
         var downloadedNode: Node? = null
         var downloading = false
 
-        override suspend fun getNearestNodes(): List<Node> {
+        override suspend fun getNearestNodes(coordinates: Coordinates): List<Node> {
             discoveries++
+            receivedCoordinates = coordinates
             return if (empty) emptyList() else (0..4).map { Node("$it", "Server $it", it * 10) }
         }
 

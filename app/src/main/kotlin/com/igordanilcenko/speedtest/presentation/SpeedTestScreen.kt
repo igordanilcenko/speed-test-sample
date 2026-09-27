@@ -18,6 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -31,15 +32,29 @@ import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.model.SelectedServer
 import com.igordanilcenko.speedtest.domain.TEST_DURATION_MILLIS
 import com.igordanilcenko.speedtest.domain.TestFailure
+import com.igordanilcenko.speedtest.domain.LocationFailure
 import java.util.Locale
 
 @Composable
-fun SpeedTestScreen(state: SpeedTestUiState, onIntent: (SpeedTestIntent) -> Unit) {
-    Scaffold { insets ->
+fun SpeedTestScreen(
+    state: SpeedTestUiState,
+    onIntent: (SpeedTestIntent) -> Unit,
+    onOpenPreferences: () -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    Scaffold(modifier = modifier) { insets ->
         Box(Modifier.fillMaxSize().padding(insets), contentAlignment = Alignment.Center) {
-            if (state.phase == TestPhase.Idle) {
+            if (state.locationPermission == LocationPermission.Denied || !state.locationEnabled) {
+                LocationPermissionContent(
+                    message = stringResource(if (state.locationPermission == LocationPermission.Denied)
+                        R.string.location_permission_denied else R.string.location_disabled),
+                    onOpenPreferences = onOpenPreferences,
+                    modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                )
+            } else if (state.phase == TestPhase.Idle) {
                 Button(
                     onClick = { onIntent(SpeedTestIntent.Start) },
+                    enabled = state.canStart,
                     shape = CircleShape,
                     modifier = Modifier.size(192.dp),
                 ) {
@@ -54,7 +69,7 @@ fun SpeedTestScreen(state: SpeedTestUiState, onIntent: (SpeedTestIntent) -> Unit
                 ) {
                     Text(stringResource(state.status), textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleLarge)
-                    if (state.phase == TestPhase.FindingNodes || state.phase == TestPhase.Pinging) {
+                    if (state.phase == TestPhase.Locating || state.phase == TestPhase.FindingNodes || state.phase == TestPhase.Pinging) {
                         CircularProgressIndicator()
                     }
                     state.selectedServer?.let { server ->
@@ -89,6 +104,7 @@ fun SpeedTestScreen(state: SpeedTestUiState, onIntent: (SpeedTestIntent) -> Unit
                     Button(
                         onClick = { onIntent(if (state.isRunning) SpeedTestIntent.Stop else SpeedTestIntent.Start) },
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = state.isRunning || state.canStart,
                         contentPadding = PaddingValues(16.dp),
                     ) {
                         Text(stringResource(if (state.isRunning) R.string.stop else R.string.start))
@@ -99,9 +115,31 @@ fun SpeedTestScreen(state: SpeedTestUiState, onIntent: (SpeedTestIntent) -> Unit
     }
 }
 
+@Composable
+private fun LocationPermissionContent(
+    message: String,
+    onOpenPreferences: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(message, textAlign = TextAlign.Center)
+        Button(onClick = {}, enabled = false, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.start))
+        }
+        OutlinedButton(onClick = onOpenPreferences, modifier = Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.go_to_preferences))
+        }
+    }
+}
+
 private val SpeedTestUiState.status: Int
     get() = when (phase) {
         TestPhase.Idle -> R.string.start
+        TestPhase.Locating -> R.string.getting_location
         TestPhase.FindingNodes -> R.string.finding_nodes
         TestPhase.Pinging -> R.string.pinging
         TestPhase.Measuring -> R.string.measuring
@@ -110,14 +148,19 @@ private val SpeedTestUiState.status: Int
             TestFailure.NoServers -> R.string.no_servers
             TestFailure.NoPingReplies -> R.string.no_ping_replies
             TestFailure.NoMeasurements -> R.string.no_measurements
-            null -> R.string.test_error
+            null -> when (locationFailure) {
+                LocationFailure.Unavailable -> R.string.location_unavailable
+                LocationFailure.Disabled -> R.string.location_disabled
+                LocationFailure.PermissionDenied -> R.string.location_permission_denied
+                null -> R.string.test_error
+            }
         }
     }
 
 @Preview(showBackground = true, widthDp = 320, heightDp = 640)
 @Composable
 private fun IdlePreview() {
-    MaterialTheme { SpeedTestScreen(SpeedTestUiState(), {}) }
+    MaterialTheme { SpeedTestScreen(SpeedTestUiState(locationPermission = LocationPermission.NotRequested), {}) }
 }
 
 @Preview(showBackground = true, widthDp = 800, heightDp = 360)

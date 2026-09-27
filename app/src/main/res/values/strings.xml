@@ -19,4 +19,13 @@
     <string name="no_ping_replies">None of the servers responded to ping</string>
     <string name="no_measurements">The speed test ended before completion</string>
     <string name="test_error">Unable to complete the test</string>
+    <string name="getting_location">Getting approximate location...</string>
+    <string name="location_permission_title">Find nearby servers</string>
+    <string name="location_permission_reason">Allow approximate location to find nearby speed-test servers. Precise location is not needed.</string>
+    <string name="location_permission_denied">Location access is required to find nearby servers. Open Preferences, choose Permissions, and allow Location to enable Start.</string>
+    <string name="location_disabled">Location is turned off on your device. Turn it on in Preferences to enable Start.</string>
+    <string name="location_unavailable">Unable to get your location. Check that location services are available and try again.</string>
+    <string name="go_to_preferences">Go to Preferences</string>
+    <string name="continue_action">Continue</string>
+    <string name="not_now">Not now</string>
 </resources>
