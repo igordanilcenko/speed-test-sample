@@ -11,9 +11,9 @@ import androidx.compose.material3.lightColorScheme
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
-import com.igordanilcenko.speedtest.data.StubSpeedTestRepository
+import com.igordanilcenko.speedtest.data.HttpServerDirectoryRepository
 import com.igordanilcenko.speedtest.data.AndroidLocationRepository
-import com.igordanilcenko.speedtest.domain.RunSpeedTest
+import com.igordanilcenko.speedtest.domain.FindNearestNodes
 import com.igordanilcenko.speedtest.presentation.SpeedTestRoute
 import com.igordanilcenko.speedtest.presentation.SpeedTestViewModel
 
@@ -25,7 +25,7 @@ class MainActivity : ComponentActivity() {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 val viewModel: SpeedTestViewModel = viewModel(factory = viewModelFactory {
                     initializer {
-                        SpeedTestViewModel(RunSpeedTest(StubSpeedTestRepository(), AndroidLocationRepository(applicationContext)))
+                        SpeedTestViewModel(FindNearestNodes(HttpServerDirectoryRepository.create(), AndroidLocationRepository(applicationContext)))
                     }
                 })
                 SpeedTestRoute(viewModel, isChangingConfigurations = { this@MainActivity.isChangingConfigurations })

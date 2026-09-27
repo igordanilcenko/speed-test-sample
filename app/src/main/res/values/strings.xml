@@ -2,6 +2,10 @@
 <resources>
     <string name="app_name">Speed Test</string>
     <string name="start">Start</string>
+    <string name="nearby_servers">Nearby servers</string>
+    <string name="distance_km">%1$.1f km away</string>
+    <string name="directory_unavailable">Unable to load servers. Check your connection and try again.</string>
+    <string name="directory_invalid">The server directory returned an invalid response. Try again later.</string>
     <string name="stop">Stop</string>
     <string name="selected_server">Selected server</string>
     <string name="ping_response_time">PING response time</string>

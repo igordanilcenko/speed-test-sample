@@ -15,10 +15,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -28,12 +27,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.igordanilcenko.speedtest.R
-import com.igordanilcenko.speedtest.domain.model.Node
-import com.igordanilcenko.speedtest.domain.model.SelectedServer
-import com.igordanilcenko.speedtest.domain.TEST_DURATION_MILLIS
-import com.igordanilcenko.speedtest.domain.TestFailure
+import com.igordanilcenko.speedtest.domain.DirectoryFailure
 import com.igordanilcenko.speedtest.domain.LocationFailure
-import java.util.Locale
+import com.igordanilcenko.speedtest.domain.model.NearbyNode
 
 @Composable
 fun SpeedTestScreen(
@@ -69,38 +65,10 @@ fun SpeedTestScreen(
                 ) {
                     Text(stringResource(state.status), textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleLarge)
-                    if (state.phase == TestPhase.Locating || state.phase == TestPhase.FindingNodes || state.phase == TestPhase.Pinging) {
-                        CircularProgressIndicator()
+                    if (state.isRunning) CircularProgressIndicator()
+                    if (state.nodes.isNotEmpty()) {
+                        NearbyNodesContent(state.nodes, modifier = Modifier.fillMaxWidth())
                     }
-                    state.selectedServer?.let { server ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(stringResource(if (state.phase == TestPhase.Finished)
-                                R.string.average_speed else R.string.download_speed))
-                            Text(
-                                state.speedMbps?.let { String.format(Locale.ENGLISH, "%.1f", it) } ?: "--",
-                                style = MaterialTheme.typography.displayMedium,
-                            )
-                            Text(stringResource(R.string.mbps))
-                        }
-                        HorizontalDivider()
-                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(stringResource(R.string.selected_server), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(server.node.name, style = MaterialTheme.typography.titleLarge)
-                        }
-                        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(stringResource(R.string.ping_response_time), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(stringResource(R.string.ping_value, server.pingMs), style = MaterialTheme.typography.titleLarge)
-                        }
-                        if (state.phase == TestPhase.Measuring) {
-                            LinearProgressIndicator(
-                                progress = { (state.elapsedMillis.toFloat() / TEST_DURATION_MILLIS).coerceIn(0f, 1f) },
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                            Text(stringResource(R.string.time_remaining,
-                                ((TEST_DURATION_MILLIS - state.elapsedMillis).coerceAtLeast(0) + 999) / 1_000))
-                        }
-                    }
-                    Text(stringResource(R.string.demo_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(
                         onClick = { onIntent(if (state.isRunning) SpeedTestIntent.Stop else SpeedTestIntent.Start) },
                         modifier = Modifier.fillMaxWidth(),
@@ -111,6 +79,20 @@ fun SpeedTestScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun NearbyNodesContent(nodes: List<NearbyNode>, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        nodes.forEach { nearby ->
+            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(nearby.node.name, style = MaterialTheme.typography.titleMedium)
+                Text("${nearby.node.host}:${nearby.node.port}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.distance_km, nearby.distanceKm))
+            }
+            HorizontalDivider()
         }
     }
 }
@@ -141,13 +123,11 @@ private val SpeedTestUiState.status: Int
         TestPhase.Idle -> R.string.start
         TestPhase.Locating -> R.string.getting_location
         TestPhase.FindingNodes -> R.string.finding_nodes
-        TestPhase.Pinging -> R.string.pinging
-        TestPhase.Measuring -> R.string.measuring
-        TestPhase.Finished -> R.string.finished
+        TestPhase.NodesReady -> R.string.nearby_servers
         TestPhase.Error -> when (failure) {
-            TestFailure.NoServers -> R.string.no_servers
-            TestFailure.NoPingReplies -> R.string.no_ping_replies
-            TestFailure.NoMeasurements -> R.string.no_measurements
+            DirectoryFailure.NoServers -> R.string.no_servers
+            DirectoryFailure.Unavailable -> R.string.directory_unavailable
+            DirectoryFailure.InvalidResponse -> R.string.directory_invalid
             null -> when (locationFailure) {
                 LocationFailure.Unavailable -> R.string.location_unavailable
                 LocationFailure.Disabled -> R.string.location_disabled
@@ -161,17 +141,4 @@ private val SpeedTestUiState.status: Int
 @Composable
 private fun IdlePreview() {
     MaterialTheme { SpeedTestScreen(SpeedTestUiState(locationPermission = LocationPermission.NotRequested), {}) }
-}
-
-@Preview(showBackground = true, widthDp = 800, heightDp = 360)
-@Composable
-private fun MeasuringPreview() {
-    MaterialTheme {
-        SpeedTestScreen(SpeedTestUiState(
-            phase = TestPhase.Measuring,
-            selectedServer = SelectedServer(Node("demo-2", "Demo 3", 38), 12.0),
-            speedMbps = 84.6,
-            elapsedMillis = 5_000,
-        ), {})
-    }
 }

@@ -2,9 +2,9 @@ package com.igordanilcenko.speedtest.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.igordanilcenko.speedtest.domain.RunSpeedTest
-import com.igordanilcenko.speedtest.domain.SpeedTestException
-import com.igordanilcenko.speedtest.domain.SpeedTestUpdate
+import com.igordanilcenko.speedtest.domain.FindNearestNodes
+import com.igordanilcenko.speedtest.domain.DirectoryException
+import com.igordanilcenko.speedtest.domain.NodeDiscoveryUpdate
 import com.igordanilcenko.speedtest.domain.LocationException
 import com.igordanilcenko.speedtest.domain.LocationFailure
 import kotlinx.coroutines.Job
@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class SpeedTestViewModel(private val runSpeedTest: RunSpeedTest) : ViewModel() {
+class SpeedTestViewModel(private val findNearestNodes: FindNearestNodes) : ViewModel() {
     private val mutableState = MutableStateFlow(SpeedTestUiState())
     val state = mutableState.asStateFlow()
     private var testJob: Job? = null
@@ -53,23 +53,14 @@ class SpeedTestViewModel(private val runSpeedTest: RunSpeedTest) : ViewModel() {
         mutableState.value = state.value.copy(phase = TestPhase.Locating)
         testJob = viewModelScope.launch {
             try {
-                runSpeedTest().collect { update ->
+                findNearestNodes().collect { update ->
                     currentCoroutineContext().ensureActive()
                     mutableState.value = when (update) {
-                        SpeedTestUpdate.Locating -> state.value.copy(phase = TestPhase.Locating)
-                        SpeedTestUpdate.FindingNodes -> state.value.copy(phase = TestPhase.FindingNodes)
-                        SpeedTestUpdate.Pinging -> state.value.copy(phase = TestPhase.Pinging)
-                        is SpeedTestUpdate.Measuring -> state.value.copy(
-                            phase = TestPhase.Measuring,
-                            selectedServer = update.server,
-                            speedMbps = update.sample?.currentMbps,
-                            elapsedMillis = update.sample?.elapsedMillis ?: 0,
-                        )
-                        is SpeedTestUpdate.Finished -> state.value.copy(
-                            phase = TestPhase.Finished,
-                            selectedServer = update.server,
-                            speedMbps = update.sample.averageMbps,
-                            elapsedMillis = update.sample.elapsedMillis,
+                        NodeDiscoveryUpdate.Locating -> state.value.copy(phase = TestPhase.Locating)
+                        NodeDiscoveryUpdate.Loading -> state.value.copy(phase = TestPhase.FindingNodes)
+                        is NodeDiscoveryUpdate.Ready -> state.value.copy(
+                            phase = TestPhase.NodesReady,
+                            nodes = update.nodes,
                         )
                     }
                 }
@@ -78,7 +69,7 @@ class SpeedTestViewModel(private val runSpeedTest: RunSpeedTest) : ViewModel() {
                 val locationFailure = (error as? LocationException)?.failure
                 mutableState.value = state.value.copy(
                     phase = TestPhase.Error,
-                    failure = (error as? SpeedTestException)?.failure,
+                    failure = (error as? DirectoryException)?.failure,
                     locationFailure = locationFailure,
                     locationPermission = if (locationFailure == LocationFailure.PermissionDenied)
                         LocationPermission.Denied else state.value.locationPermission,
