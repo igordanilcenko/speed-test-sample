@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.location.LocationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleResumeEffect
@@ -44,7 +45,7 @@ fun SpeedTestRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val preferences = remember(context) { context.getSharedPreferences("location_permission", Context.MODE_PRIVATE) }
     val manager = remember(context) { context.getSystemService(Context.LOCATION_SERVICE) as LocationManager }
-    var showRationale by rememberSaveable { mutableStateOf(false) }
+    val showRationale = rememberSaveable { mutableStateOf(false) }
     var pendingStart by rememberSaveable { mutableStateOf(false) }
 
     fun refreshAccess() {
@@ -71,7 +72,7 @@ fun SpeedTestRoute(
         onStopOrDispose {
             if (!isChangingConfigurations()) {
                 pendingStart = false
-                showRationale = false
+                showRationale.value = false
                 viewModel.onIntent(SpeedTestIntent.ScreenLeft)
             }
         }
@@ -91,7 +92,7 @@ fun SpeedTestRoute(
             if (intent == SpeedTestIntent.Start) {
                 refreshAccess()
                 if (viewModel.state.value.locationPermission == LocationPermission.NotRequested) {
-                    showRationale = true
+                    showRationale.value = true
                 } else {
                     viewModel.onIntent(intent)
                 }
@@ -109,20 +110,20 @@ fun SpeedTestRoute(
         },
     )
 
-    if (showRationale) {
+    if (showRationale.value) {
         AlertDialog(
-            onDismissRequest = { showRationale = false },
+            onDismissRequest = { showRationale.value = false },
             title = { Text(stringResource(R.string.location_permission_title)) },
             text = { Text(stringResource(R.string.location_permission_reason)) },
             confirmButton = {
                 TextButton(onClick = {
-                    showRationale = false
-                    preferences.edit().putBoolean("requested", true).apply()
+                    showRationale.value = false
+                    preferences.edit { putBoolean("requested", true) }
                     permissionLauncher.launch(Manifest.permission.ACCESS_COARSE_LOCATION)
                 }) { Text(stringResource(R.string.continue_action)) }
             },
             dismissButton = {
-                TextButton(onClick = { showRationale = false }) { Text(stringResource(R.string.not_now)) }
+                TextButton(onClick = { showRationale.value = false }) { Text(stringResource(R.string.not_now)) }
             },
         )
     }

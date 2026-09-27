@@ -35,8 +35,8 @@ import com.igordanilcenko.speedtest.domain.model.NearbyNode
 fun SpeedTestScreen(
     state: SpeedTestUiState,
     onIntent: (SpeedTestIntent) -> Unit,
-    onOpenPreferences: () -> Unit = {},
     modifier: Modifier = Modifier,
+    onOpenPreferences: () -> Unit = {},
 ) {
     Scaffold(modifier = modifier) { insets ->
         Box(Modifier.fillMaxSize().padding(insets), contentAlignment = Alignment.Center) {
