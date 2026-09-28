@@ -8,6 +8,8 @@ import com.igordanilcenko.speedtest.domain.LocationFailure
 import com.igordanilcenko.speedtest.domain.intent.FindNearestNodes
 import com.igordanilcenko.speedtest.domain.intent.NodeDiscoveryUpdate
 import com.igordanilcenko.speedtest.domain.intent.SelectLowestPingServer
+import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
+import com.igordanilcenko.speedtest.domain.model.DownloadUpdate
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
@@ -21,6 +23,7 @@ import java.util.Locale
 class SpeedTestViewModel(
     private val findNearestNodes: FindNearestNodes,
     private val selectLowestPingServer: SelectLowestPingServer,
+    private val measureDownloadSpeed: MeasureDownloadSpeed,
     private val log: (String) -> Unit = {},
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SpeedTestUiState())
@@ -102,6 +105,20 @@ class SpeedTestViewModel(
                                 pingFailed = selected == null,
                             )
                         }
+                    }
+                }
+                val selected = state.value.selectedServer ?: return@launch
+                mutableState.value = state.value.copy(phase = TestPhase.Measuring)
+                log("[Download] Starting 15-second download test for ${selected.node.host}")
+                measureDownloadSpeed(selected.node).collect { update ->
+                    currentCoroutineContext().ensureActive()
+                    mutableState.value = state.value.copy(
+                        phase = if (update is DownloadUpdate.Finished) TestPhase.Finished else TestPhase.Measuring,
+                        download = update.measurement,
+                        isDemo = update.isDemo,
+                    )
+                    if (update is DownloadUpdate.Finished) {
+                        log("[Download] Finished: average=${update.measurement.averageMbps} Mbps, demo=${update.isDemo}")
                     }
                 }
             } catch (error: Exception) {

@@ -4,12 +4,15 @@ import com.igordanilcenko.speedtest.domain.DirectoryFailure
 import com.igordanilcenko.speedtest.domain.LocationFailure
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import com.igordanilcenko.speedtest.domain.model.SelectedServer
+import com.igordanilcenko.speedtest.domain.model.SpeedMeasurement
 
-enum class TestPhase { Idle, Locating, FindingNodes, Pinging, ServerReady, Error }
+enum class TestPhase { Idle, Locating, FindingNodes, Pinging, ServerReady, Measuring, Finished, Error }
 enum class LocationPermission { Unknown, NotRequested, Granted, Denied }
 
 data class SpeedTestUiState(
     val phase: TestPhase = TestPhase.Idle,
+    val download: SpeedMeasurement? = null,
+    val isDemo: Boolean = false,
     val nodes: List<NearbyNode> = emptyList(),
     val selectedServer: SelectedServer? = null,
     val pingFailed: Boolean = false,
@@ -23,5 +26,5 @@ data class SpeedTestUiState(
                 locationPermission != LocationPermission.Denied && locationEnabled && !isRunning
 
     val isRunning: Boolean
-        get() = phase == TestPhase.Locating || phase == TestPhase.FindingNodes || phase == TestPhase.Pinging
+        get() = phase == TestPhase.Locating || phase == TestPhase.FindingNodes || phase == TestPhase.Pinging || phase == TestPhase.Measuring
 }

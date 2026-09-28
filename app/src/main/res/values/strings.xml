@@ -1,6 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Speed Test</string>
+    <string name="speed_value">%1$.2f Mbps</string>
+    <plurals name="seconds_remaining">
+        <item quantity="one">%1$d second remaining</item>
+        <item quantity="other">%1$d seconds remaining</item>
+    </plurals>
     <string name="start">Start</string>
     <string name="nearby_servers">Nearby servers</string>
     <string name="distance_km">%1$.1f km away</string>

@@ -24,6 +24,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -34,6 +35,8 @@ import com.igordanilcenko.speedtest.domain.model.Coordinates
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.model.SelectedServer
+import com.igordanilcenko.speedtest.domain.model.SpeedMeasurement
+import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
 
 @Composable
 fun SpeedTestScreen(
@@ -83,6 +86,10 @@ fun SpeedTestScreen(
                         style = MaterialTheme.typography.titleLarge
                     )
                     if (state.isRunning) CircularProgressIndicator()
+                    state.download?.let {
+                        DownloadContent(it, state.phase == TestPhase.Finished, state.phase == TestPhase.Measuring,
+                            state.isDemo, modifier = Modifier.fillMaxWidth())
+                    }
                     if (state.selectedServer != null) {
                         SelectedServerContent(state.selectedServer, modifier = Modifier.fillMaxWidth())
                     } else if (state.nodes.isNotEmpty()) {
@@ -98,6 +105,26 @@ fun SpeedTestScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DownloadContent(
+    measurement: SpeedMeasurement,
+    finished: Boolean,
+    running: Boolean,
+    isDemo: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (isDemo) Text(stringResource(R.string.demo_data), color = MaterialTheme.colorScheme.error)
+        Text(stringResource(if (finished) R.string.average_speed else R.string.download_speed))
+        Text(stringResource(R.string.speed_value, if (finished) measurement.averageMbps else measurement.currentMbps),
+            style = MaterialTheme.typography.headlineMedium)
+        if (running) {
+            val remaining = ((MeasureDownloadSpeed.duration.inWholeMilliseconds - measurement.elapsedMillis).coerceAtLeast(0) + 999) / 1000
+            Text(pluralStringResource(R.plurals.seconds_remaining, remaining.toInt(), remaining))
         }
     }
 }
@@ -156,6 +183,8 @@ private val SpeedTestUiState.status: Int
         TestPhase.FindingNodes -> R.string.finding_nodes
         TestPhase.Pinging -> R.string.pinging
         TestPhase.ServerReady -> R.string.selected_server
+        TestPhase.Measuring -> R.string.measuring
+        TestPhase.Finished -> R.string.finished
         TestPhase.Error -> if (pingFailed) R.string.no_ping_replies else when (failure) {
             DirectoryFailure.NoServers -> R.string.no_servers
             DirectoryFailure.Unavailable -> R.string.directory_unavailable
@@ -245,6 +274,36 @@ private fun PreviewPinging() = SpeedTestPreviewWrapper {
     SpeedTestScreen(
         state = SpeedTestUiState(phase = TestPhase.Pinging, nodes = previewNodes),
         onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Download: Demo Progress")
+@Composable
+private fun PreviewDownloadProgress() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(
+            phase = TestPhase.Measuring,
+            selectedServer = SelectedServer(previewNodes.first().node, 12.5),
+            download = SpeedMeasurement(64.0, 40_000_000, 5_000),
+            isDemo = true,
+            locationPermission = LocationPermission.Granted,
+        ),
+        onIntent = {},
+    )
+}
+
+@Preview(showBackground = true, name = "Download: Demo Result")
+@Composable
+private fun PreviewDownloadResult() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(
+            phase = TestPhase.Finished,
+            selectedServer = SelectedServer(previewNodes.first().node, 12.5),
+            download = SpeedMeasurement(64.0, 120_000_000, 15_000),
+            isDemo = true,
+            locationPermission = LocationPermission.Granted,
+        ),
+        onIntent = {},
     )
 }
 
