@@ -20,7 +20,7 @@
     <string name="measuring">Measuring&#8230;</string>
     <string name="finished">Completed</string>
     <string name="no_servers">No nearby servers found</string>
-    <string name="no_ping_replies">None of the servers responded to ping</string>
+    <string name="no_ping_replies">Unable to measure ICMP ping for any server. Your device or network may block ICMP. Try again.</string>
     <string name="no_measurements">The speed test ended before completion</string>
     <string name="test_error">Unable to complete the test</string>
     <string name="getting_location">Getting approximate location&#8230;</string>

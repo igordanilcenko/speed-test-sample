@@ -30,6 +30,7 @@ import com.igordanilcenko.speedtest.R
 import com.igordanilcenko.speedtest.domain.DirectoryFailure
 import com.igordanilcenko.speedtest.domain.LocationFailure
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
+import com.igordanilcenko.speedtest.domain.model.SelectedServer
 
 @Composable
 fun SpeedTestScreen(
@@ -66,7 +67,9 @@ fun SpeedTestScreen(
                     Text(stringResource(state.status), textAlign = TextAlign.Center,
                         style = MaterialTheme.typography.titleLarge)
                     if (state.isRunning) CircularProgressIndicator()
-                    if (state.nodes.isNotEmpty()) {
+                    if (state.selectedServer != null) {
+                        SelectedServerContent(state.selectedServer, modifier = Modifier.fillMaxWidth())
+                    } else if (state.nodes.isNotEmpty()) {
                         NearbyNodesContent(state.nodes, modifier = Modifier.fillMaxWidth())
                     }
                     Button(
@@ -80,6 +83,16 @@ fun SpeedTestScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SelectedServerContent(server: SelectedServer, modifier: Modifier = Modifier) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Text(server.node.name, style = MaterialTheme.typography.titleMedium)
+        Text("${server.node.host}:${server.node.port}", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(stringResource(R.string.ping_response_time), style = MaterialTheme.typography.labelLarge)
+        Text(stringResource(R.string.ping_value, server.pingMs), style = MaterialTheme.typography.headlineMedium)
     }
 }
 
@@ -123,8 +136,9 @@ private val SpeedTestUiState.status: Int
         TestPhase.Idle -> R.string.start
         TestPhase.Locating -> R.string.getting_location
         TestPhase.FindingNodes -> R.string.finding_nodes
-        TestPhase.NodesReady -> R.string.nearby_servers
-        TestPhase.Error -> when (failure) {
+        TestPhase.Pinging -> R.string.pinging
+        TestPhase.ServerReady -> R.string.selected_server
+        TestPhase.Error -> if (pingFailed) R.string.no_ping_replies else when (failure) {
             DirectoryFailure.NoServers -> R.string.no_servers
             DirectoryFailure.Unavailable -> R.string.directory_unavailable
             DirectoryFailure.InvalidResponse -> R.string.directory_invalid

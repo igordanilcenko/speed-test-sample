@@ -3,6 +3,7 @@ package com.igordanilcenko.speedtest.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.igordanilcenko.speedtest.domain.FindNearestNodes
+import com.igordanilcenko.speedtest.domain.SelectLowestPingServer
 import com.igordanilcenko.speedtest.domain.DirectoryException
 import com.igordanilcenko.speedtest.domain.NodeDiscoveryUpdate
 import com.igordanilcenko.speedtest.domain.LocationException
@@ -14,7 +15,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-class SpeedTestViewModel(private val findNearestNodes: FindNearestNodes) : ViewModel() {
+class SpeedTestViewModel(
+    private val findNearestNodes: FindNearestNodes,
+    private val selectLowestPingServer: SelectLowestPingServer,
+) : ViewModel() {
     private val mutableState = MutableStateFlow(SpeedTestUiState())
     val state = mutableState.asStateFlow()
     private var testJob: Job? = null
@@ -58,10 +62,16 @@ class SpeedTestViewModel(private val findNearestNodes: FindNearestNodes) : ViewM
                     mutableState.value = when (update) {
                         NodeDiscoveryUpdate.Locating -> state.value.copy(phase = TestPhase.Locating)
                         NodeDiscoveryUpdate.Loading -> state.value.copy(phase = TestPhase.FindingNodes)
-                        is NodeDiscoveryUpdate.Ready -> state.value.copy(
-                            phase = TestPhase.NodesReady,
-                            nodes = update.nodes,
-                        )
+                        is NodeDiscoveryUpdate.Ready -> {
+                            mutableState.value = state.value.copy(phase = TestPhase.Pinging, nodes = update.nodes)
+                            val selected = selectLowestPingServer(update.nodes)
+                            currentCoroutineContext().ensureActive()
+                            state.value.copy(
+                                phase = if (selected == null) TestPhase.Error else TestPhase.ServerReady,
+                                selectedServer = selected,
+                                pingFailed = selected == null,
+                            )
+                        }
                     }
                 }
             } catch (error: Exception) {

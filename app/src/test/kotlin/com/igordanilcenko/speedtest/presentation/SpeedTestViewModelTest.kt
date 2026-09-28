@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModelStore
 import com.igordanilcenko.speedtest.domain.*
 import com.igordanilcenko.speedtest.domain.model.Coordinates
 import com.igordanilcenko.speedtest.domain.model.Node
+import com.igordanilcenko.speedtest.domain.model.PingResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
@@ -32,7 +33,8 @@ class SpeedTestViewModelTest {
         runCurrent()
         assertEquals(TestPhase.FindingNodes, vm.state.value.phase)
         advanceUntilIdle()
-        assertEquals(TestPhase.NodesReady, vm.state.value.phase)
+        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
+        assertEquals("4", vm.state.value.selectedServer?.node?.id)
         assertEquals(listOf("0", "1", "2", "3", "4"), vm.state.value.nodes.map { it.node.id })
         assertFalse(vm.state.value.isRunning)
         assertEquals(1, directory.requests)
@@ -77,7 +79,7 @@ class SpeedTestViewModelTest {
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
         assertEquals(2, directory.requests)
-        assertEquals(TestPhase.NodesReady, vm.state.value.phase)
+        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
     }
 
     @Test fun `empty directory shows error and can be retried`() = runTest {
@@ -89,7 +91,7 @@ class SpeedTestViewModelTest {
         directory.empty = false
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
-        assertEquals(TestPhase.NodesReady, vm.state.value.phase)
+        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
     }
 
     @Test fun `permission denial blocks start and grant only enables it`() = runTest {
@@ -172,8 +174,70 @@ class SpeedTestViewModelTest {
     private fun viewModel(
         directory: ServerDirectoryRepository,
         locationRepository: LocationRepository = location,
-    ) = SpeedTestViewModel(FindNearestNodes(directory, locationRepository, dispatcher)).apply {
+        pingService: PingService = PingService { host ->
+            delay(100)
+            PingResult.Success(10.0 - host.removePrefix("server").substringBefore('.').toInt())
+        },
+    ) = SpeedTestViewModel(
+        FindNearestNodes(directory, locationRepository, dispatcher),
+        SelectLowestPingServer(pingService),
+    ).apply {
         onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, true))
+    }
+
+    @Test fun `stop exit and permission revocation cancel all ping jobs`() = runTest {
+        for (intent in listOf(SpeedTestIntent.Stop, SpeedTestIntent.ScreenLeft,
+            SpeedTestIntent.LocationAccessChanged(LocationPermission.Denied, true))) {
+            var cancelled = 0
+            val vm = viewModel(Directory(), pingService = PingService {
+                try { awaitCancellation() } finally { cancelled++ }
+            })
+            vm.onIntent(SpeedTestIntent.Start)
+            advanceTimeBy(500)
+            runCurrent()
+            assertEquals(TestPhase.Pinging, vm.state.value.phase)
+            assertTrue(vm.state.value.isRunning)
+            assertFalse(vm.state.value.canStart)
+            vm.onIntent(intent)
+            advanceUntilIdle()
+            assertEquals(5, cancelled)
+            assertEquals(TestPhase.Idle, vm.state.value.phase)
+            assertNull(vm.state.value.selectedServer)
+        }
+    }
+
+    @Test fun `clearing viewmodel cancels pings`() = runTest {
+        var cancelled = 0
+        val vm = viewModel(Directory(), pingService = PingService {
+            try { awaitCancellation() } finally { cancelled++ }
+        })
+        val store = ViewModelStore().apply { put("test", vm) }
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceTimeBy(500)
+        runCurrent()
+        store.clear()
+        advanceUntilIdle()
+        assertEquals(5, cancelled)
+    }
+
+    @Test fun `failed pings allow retry without stale selection`() = runTest {
+        var reachable = false
+        val vm = viewModel(Directory(), pingService = PingService {
+            if (reachable) PingResult.Success(12.5) else PingResult.NoReply
+        })
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        assertEquals(TestPhase.Error, vm.state.value.phase)
+        assertTrue(vm.state.value.pingFailed)
+        assertTrue(vm.state.value.canStart)
+        assertNull(vm.state.value.selectedServer)
+        reachable = true
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
+        assertFalse(vm.state.value.pingFailed)
+        vm.onIntent(SpeedTestIntent.Stop)
+        assertNull(vm.state.value.selectedServer)
     }
 
     private class Directory(var empty: Boolean = false) : ServerDirectoryRepository {
