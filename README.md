@@ -64,3 +64,8 @@ The Activity wires the implementations together. The ViewModel owns the run in `
 Open the project in Android Studio, run it on Android 6.0+, enable location, and tap **Start**. The screen shows only the selected server, its ping, and download speed. Debug logs use the `SpeedTest` tag and include all five ping results. Directory and token requests use HTTPS; dynamic test nodes currently use HTTP for `/hello` and `/download`, so the app allows cleartext traffic.
 
 Compose Previews cover the main states. Unit tests cover selection, ICMP parsing, ViewModel transitions, speed math, and download behavior with MockWebServer. Run them with `./gradlew :app:testDebugUnitTest`.
+
+## Demo
+
+A demonstration of the application's runtime flow can be inspected directly in the media directory:
+[Watch or Download the Measurement Demo Video](media/speed-measurement.mp4)
