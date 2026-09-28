@@ -12,6 +12,8 @@ import com.igordanilcenko.speedtest.domain.intent.NodeDiscoveryUpdate
 import com.igordanilcenko.speedtest.domain.intent.SelectLowestPingServer
 import com.igordanilcenko.speedtest.domain.model.DownloadUpdate
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
+import com.igordanilcenko.speedtest.domain.model.Node
+import com.igordanilcenko.speedtest.domain.model.PingResult
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -93,7 +95,7 @@ class SpeedTestViewModel(
                             log(formatNearbyNodes(update.nodes))
                             log("[Ping] Measuring ICMP RTT for ${update.nodes.size} candidates")
                             mutableState.value = state.value.copy(phase = TestPhase.Pinging)
-                            val selected = selectLowestPingServer(update.nodes, log)
+                            val selected = selectLowestPingServer(update.nodes) { log(formatPingResults(it)) }
                             currentCoroutineContext().ensureActive()
                             log(
                                 if (selected == null) "[Ping] Failed: no candidate returned a valid ICMP measurement"
@@ -153,5 +155,20 @@ internal fun formatNearbyNodes(nodes: List<NearbyNode>): String = buildString {
         append("\n  ${index + 1}. ")
         append("$name | $host:${nearby.node.port} | ")
         append(String.format(Locale.US, "%.2f km", nearby.distanceKm))
+    }
+}
+
+internal fun formatPingResults(results: List<Pair<Node, PingResult>>): String = buildString {
+    append("[Ping] ICMP results (${results.size})")
+    results.forEachIndexed { index, (node, result) ->
+        val host = node.host.replace('\n', ' ').replace('\r', ' ').take(253)
+        val latency = when (result) {
+            is PingResult.Success -> if (result.latencyMs.isFinite() && result.latencyMs >= 0)
+                String.format(Locale.US, "%.3f ms", result.latencyMs) else "invalid RTT"
+
+            PingResult.NoReply -> "no reply"
+            PingResult.Unavailable -> "ICMP unavailable"
+        }
+        append("\n  ${index + 1}. $host:${node.port} | $latency")
     }
 }

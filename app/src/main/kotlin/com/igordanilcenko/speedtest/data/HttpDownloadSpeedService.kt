@@ -146,7 +146,7 @@ class HttpDownloadSpeedService internal constructor(
                     log(
                         String.format(
                             Locale.US,
-                            "[Download] Progress: elapsed=%dms, bytes=%d, current=%.2f Mbps",
+                            "[Download] Progress: elapsed=%dms, bytes=%d, current=%.2f Mbps, average=%.2f Mbps",
                             measurement.elapsedMillis,
                             measurement.totalBytes,
                             measurement.currentMbps,
