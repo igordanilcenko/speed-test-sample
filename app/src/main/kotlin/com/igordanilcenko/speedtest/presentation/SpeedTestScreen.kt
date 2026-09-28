@@ -18,6 +18,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -29,7 +30,9 @@ import androidx.compose.ui.unit.dp
 import com.igordanilcenko.speedtest.R
 import com.igordanilcenko.speedtest.domain.DirectoryFailure
 import com.igordanilcenko.speedtest.domain.LocationFailure
+import com.igordanilcenko.speedtest.domain.model.Coordinates
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
+import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.model.SelectedServer
 
 @Composable
@@ -151,8 +154,111 @@ private val SpeedTestUiState.status: Int
         }
     }
 
-@Preview(showBackground = true, widthDp = 320, heightDp = 640)
+private val previewNode = Node(
+    id = "1",
+    name = "Prague - Casablanca INT",
+    host = "prg.speedtest.net",
+    port = 8080,
+    coordinates = Coordinates(50.08, 14.43)
+)
+
+private val previewNodes = listOf(
+    NearbyNode(previewNode, 5.2),
+    NearbyNode(previewNode.copy(id = "2", name = "Berlin - Telekom"), 280.0),
+    NearbyNode(previewNode.copy(id = "3", name = "Vienna - A1"), 250.0)
+)
+
 @Composable
-private fun IdlePreview() {
-    MaterialTheme { SpeedTestScreen(SpeedTestUiState(locationPermission = LocationPermission.NotRequested), {}) }
+private fun SpeedTestPreviewWrapper(content: @Composable () -> Unit) {
+    MaterialTheme {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+            content = content
+        )
+    }
+}
+
+@Preview(showBackground = true, name = "Permission: Not Requested")
+@Composable
+private fun PreviewNotRequested() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(locationPermission = LocationPermission.NotRequested),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Permission: Denied")
+@Composable
+private fun PreviewPermissionDenied() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(locationPermission = LocationPermission.Denied),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Location: Disabled")
+@Composable
+private fun PreviewLocationDisabled() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(locationEnabled = false),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Phase: Locating")
+@Composable
+private fun PreviewLocating() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(phase = TestPhase.Locating),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Phase: Finding Servers")
+@Composable
+private fun PreviewFindingNodes() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(phase = TestPhase.FindingNodes, nodes = previewNodes),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Phase: Pinging")
+@Composable
+private fun PreviewPinging() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(phase = TestPhase.Pinging, nodes = previewNodes),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Phase: Server Ready")
+@Composable
+private fun PreviewServerReady() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(
+            phase = TestPhase.ServerReady,
+            selectedServer = SelectedServer(previewNode, 14.5)
+        ),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Error: No Servers", group = "Errors")
+@Composable
+private fun PreviewErrorNoServers() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(phase = TestPhase.Error, failure = DirectoryFailure.NoServers),
+        onIntent = {}
+    )
+}
+
+@Preview(showBackground = true, name = "Error: No Ping Replies", group = "Errors")
+@Composable
+private fun PreviewErrorPingFailed() = SpeedTestPreviewWrapper {
+    SpeedTestScreen(
+        state = SpeedTestUiState(phase = TestPhase.Error, pingFailed = true),
+        onIntent = {}
+    )
 }
