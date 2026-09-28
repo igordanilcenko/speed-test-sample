@@ -4,68 +4,55 @@ A small Android speed-test sample with Clean Architecture and an MVI-style, sing
 
 ## From Start to result
 
-```mermaid
-sequenceDiagram
-    actor User
-    participant UI as Compose screen
-    participant VM as ViewModel
-    participant Location as Android location
-    participant Directory as Directory API
-    participant Node as Test nodes
-
-    User->>UI: Start
-    UI->>VM: Start intent
-    VM->>Location: Approximate coordinates
-    Location-->>VM: Latitude, longitude
-    VM->>Directory: HTTPS GET /api/v2/servers
-    Directory-->>VM: Servers with GPS coordinates
-    Note over VM: Keep the 5 geographically closest
-    loop 5 candidates, pinged concurrently
-        VM->>Node: ICMP Echo via system ping
-        Node-->>VM: RTT or no reply
-    end
-    Note over VM: Select the lowest valid RTT
-    VM-->>UI: Selected server and ping
-    VM->>Directory: HTTPS POST /api/v1/tokens
-    Directory-->>VM: Temporary token
-    VM->>Node: HTTP GET /hello with token
-    Node-->>VM: pong
-    loop 15 seconds, 4 download workers
-        VM->>Node: HTTP GET /download, 50 MB
-        Node-->>VM: Streamed bytes
-        VM-->>UI: Current Mbps about every 500 ms
-    end
-    VM-->>UI: Average download Mbps
+```text
+Start
+  -> Approximate location (ACCESS_COARSE_LOCATION, AndroidX LocationManagerCompat)
+  -> HTTPS GET https://sp-dir.uwn.com/api/v2/servers
+  -> Keep the 5 geographically closest nodes
+  -> Real ICMP ping to each node; select the lowest valid RTT
+  -> HTTPS POST https://sp-dir.uwn.com/api/v1/tokens
+  -> HTTP GET /hello on the selected node
+  -> 4 parallel HTTP /download streams for 15 seconds
+  -> Current Mbps every ~500 ms, then average download Mbps
 ```
 
-Approximate location needs only `ACCESS_COARSE_LOCATION`. Android's `LocationManager` may provide a cached fix; AndroidX `LocationManagerCompat` requests a fresh one when needed. Geographic distance narrows the directory to five candidates; **real ICMP ping**, not an HTTP timing request, picks the final server. `DownloadSpeedService` receives that server and performs the token, `/hello`, and repeated `/download` requests. Bytes are counted as they arrive, without saving the response to disk.
+Android's `LocationManager` may provide a cached location; AndroidX `LocationManagerCompat` requests a fresh one when needed. `DownloadSpeedService` receives the selected node, validates it with the temporary token, and repeatedly streams 50 MB requests without saving the bytes to disk. The screen shows the selected server, its ping, and download speed; debug logs show all five ping results.
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph Presentation
-        UI["Compose screen"] <-->|"Intents / UiState"| VM["SpeedTestViewModel / StateFlow"]
-    end
-    subgraph Domain
-        Cases["FindNearestNodes / SelectLowestPingServer / MeasureDownloadSpeed"] --> Ports["Repository and service interfaces"]
-    end
-    subgraph Data
-        Adapters["Android location / Retrofit directory / system ping / OkHttp download"]
-    end
-    VM --> Cases
-    Adapters -. "implements" .-> Ports
+```text
+MainActivity (wires the components together)
+    |
+    v
+presentation
+    SpeedTestRoute       permission and lifecycle handling
+    SpeedTestScreen      Compose UI
+    SpeedTestIntent ---> SpeedTestViewModel ---> SpeedTestUiState (StateFlow)
+                              |
+                              | calls
+                              v
+domain
+    FindNearestNodes          -> LocationRepository, ServerDirectoryRepository
+    SelectLowestPingServer    -> PingService
+    MeasureDownloadSpeed      -> DownloadSpeedService
+    Models: Node, NearbyNode, SelectedServer, SpeedMeasurement
+                              ^
+                              | interfaces implemented by
+data
+    AndroidLocationRepository, HttpServerDirectoryRepository
+    AndroidPingService, HttpDownloadSpeedService
 ```
 
-The Activity wires the implementations together. The ViewModel owns the run in `viewModelScope`; **Stop or leaving the screen cancels active work and resets the UI**. Permission denial, disabled location, missing ping replies, invalid responses, and timeouts have explicit error paths.
+The screen sends user intents to the ViewModel and renders its UI state. The domain decides which nodes to test, which ping wins, and how long to measure; its interfaces do not depend on Android or HTTP. Data adapters connect those interfaces to Android location, Retrofit, the system `ping` process, and OkHttp. `MainActivity` assembles them without a DI framework.
+
+The run lives in `viewModelScope`, so **Stop or leaving the screen cancels active work**. Permission denial, disabled location, missing ping replies, invalid responses, and timeouts have explicit error paths.
 
 ## Run and verify
 
-Open the project in Android Studio, run it on Android 6.0+, enable location, and tap **Start**. The screen shows only the selected server, its ping, and download speed. Debug logs use the `SpeedTest` tag and include all five ping results. Directory and token requests use HTTPS; dynamic test nodes currently use HTTP for `/hello` and `/download`, so the app allows cleartext traffic.
+Open the project in Android Studio, run it on Android 6.0+, enable location, and tap **Start**. Debug logs use the `SpeedTest` tag. The hardcoded directory and token endpoints use HTTPS; dynamic test nodes currently use HTTP for `/hello` and `/download`, so the app allows cleartext traffic.
 
 Compose Previews cover the main states. Unit tests cover selection, ICMP parsing, ViewModel transitions, speed math, and download behavior with MockWebServer. Run them with `./gradlew :app:testDebugUnitTest`.
 
 ## Demo
 
-A demonstration of the application's runtime flow can be inspected directly in the media directory:
-[Watch or Download the Measurement Demo Video](media/speed-measurement.mp4)
+[Watch the measurement demo](media/speed-measurement.mp4)
