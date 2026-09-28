@@ -15,10 +15,10 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.igordanilcenko.speedtest.data.AndroidLocationRepository
 import com.igordanilcenko.speedtest.data.AndroidPingService
-import com.igordanilcenko.speedtest.data.DemoDownloadSpeedService
-import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
+import com.igordanilcenko.speedtest.data.HttpDownloadSpeedService
 import com.igordanilcenko.speedtest.data.HttpServerDirectoryRepository
 import com.igordanilcenko.speedtest.domain.intent.FindNearestNodes
+import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
 import com.igordanilcenko.speedtest.domain.intent.SelectLowestPingServer
 import com.igordanilcenko.speedtest.presentation.SpeedTestRoute
 import com.igordanilcenko.speedtest.presentation.SpeedTestViewModel
@@ -39,7 +39,7 @@ class MainActivity : ComponentActivity() {
                                 locationRepository = AndroidLocationRepository(applicationContext, log)
                             ),
                             selectLowestPingServer = SelectLowestPingServer(AndroidPingService()),
-                            measureDownloadSpeed = MeasureDownloadSpeed(DemoDownloadSpeedService()),
+                            measureDownloadSpeed = MeasureDownloadSpeed(HttpDownloadSpeedService(log = log)),
                             log = log,
                         )
                     }

@@ -2,20 +2,28 @@ package com.igordanilcenko.speedtest.presentation
 
 import androidx.lifecycle.ViewModelStore
 import com.igordanilcenko.speedtest.domain.DirectoryFailure
+import com.igordanilcenko.speedtest.domain.DownloadException
+import com.igordanilcenko.speedtest.domain.DownloadFailure
+import com.igordanilcenko.speedtest.domain.DownloadSpeedService
 import com.igordanilcenko.speedtest.domain.LocationException
 import com.igordanilcenko.speedtest.domain.LocationFailure
 import com.igordanilcenko.speedtest.domain.LocationRepository
 import com.igordanilcenko.speedtest.domain.PingService
 import com.igordanilcenko.speedtest.domain.ServerDirectoryRepository
 import com.igordanilcenko.speedtest.domain.intent.FindNearestNodes
+import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
 import com.igordanilcenko.speedtest.domain.intent.SelectLowestPingServer
 import com.igordanilcenko.speedtest.domain.model.Coordinates
+import com.igordanilcenko.speedtest.domain.model.DownloadUpdate
 import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.model.PingResult
+import com.igordanilcenko.speedtest.domain.model.SpeedMeasurement
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -57,9 +65,8 @@ class SpeedTestViewModelTest {
         runCurrent()
         assertEquals(TestPhase.FindingNodes, vm.state.value.phase)
         advanceUntilIdle()
-        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
+        assertEquals(TestPhase.Finished, vm.state.value.phase)
         assertEquals("4", vm.state.value.selectedServer?.node?.id)
-        assertEquals(listOf("0", "1", "2", "3", "4"), vm.state.value.nodes.map { it.node.id })
         assertFalse(vm.state.value.isRunning)
         assertEquals(1, directory.requests)
         val result = vm.state.value
@@ -78,7 +85,7 @@ class SpeedTestViewModelTest {
             advanceUntilIdle()
             assertTrue(directory.cancelled)
             assertEquals(TestPhase.Idle, vm.state.value.phase)
-            assertTrue(vm.state.value.nodes.isEmpty())
+            assertNull(vm.state.value.selectedServer)
         }
     }
 
@@ -106,7 +113,7 @@ class SpeedTestViewModelTest {
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
         assertEquals(2, directory.requests)
-        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
+        assertEquals(TestPhase.Finished, vm.state.value.phase)
     }
 
     @Test
@@ -119,7 +126,7 @@ class SpeedTestViewModelTest {
         directory.empty = false
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
-        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
+        assertEquals(TestPhase.Finished, vm.state.value.phase)
     }
 
     @Test
@@ -217,9 +224,13 @@ class SpeedTestViewModelTest {
             delay(100)
             PingResult.Success(10.0 - host.removePrefix("server").substringBefore('.').toInt())
         },
+        downloadService: DownloadSpeedService = DownloadSpeedService { _, _ ->
+            flowOf(DownloadUpdate.Finished(SpeedMeasurement(100.0, 187_500_000, 15_000)))
+        },
     ) = SpeedTestViewModel(
         FindNearestNodes(directory, locationRepository, dispatcher),
         SelectLowestPingServer(pingService),
+        MeasureDownloadSpeed(downloadService),
         log,
     ).apply {
         onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, true))
@@ -287,7 +298,7 @@ class SpeedTestViewModelTest {
         reachable = true
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
-        assertEquals(TestPhase.ServerReady, vm.state.value.phase)
+        assertEquals(TestPhase.Finished, vm.state.value.phase)
         assertFalse(vm.state.value.pingFailed)
         vm.onIntent(SpeedTestIntent.Stop)
         assertNull(vm.state.value.selectedServer)
@@ -300,10 +311,16 @@ class SpeedTestViewModelTest {
         vm.onIntent(SpeedTestIntent.Start)
         advanceUntilIdle()
         val located = logs.indexOfFirst { it.contains("Location received") }
-        val candidates = logs.indexOfFirst { it.contains("Nearest servers (5)") }
+        val candidates = logs.indexOfFirst { it.contains("Geographic candidates (5)") }
+        val results = logs.indexOfFirst { it.contains("ICMP results (5)") }
         val selected = logs.indexOfFirst { it.contains("Selected lowest RTT") }
-        assertTrue(located in 0..<candidates && selected > candidates)
-        assertTrue(logs[candidates].contains("1. [NEAREST] Server 0 | server0.test:80 | 0.00 km"))
+        assertTrue(located in 0..<candidates && results > candidates && selected > results)
+        assertTrue(logs[candidates].contains("1. Server 0 | server0.test:80 | 0.00 km"))
+        assertFalse(logs.any { it.contains("[NEAREST]") })
+        for (index in 0..4) {
+            assertTrue(logs[results].contains("server$index.test:80 | ${10 - index}.000 ms"))
+        }
+        assertTrue(logs[selected].contains("server4.test:80, 6.000 ms"))
         assertEquals(6, logs[candidates].lines().size)
     }
 
@@ -319,6 +336,52 @@ class SpeedTestViewModelTest {
         advanceUntilIdle()
         assertTrue(logs.any { it.contains("LocationException (PermissionDenied)") })
         assertFalse(logs.any { it.contains("loading server directory") })
+    }
+
+    @Test
+    fun `download failures are displayed and retry clears the error`() = runTest {
+        var failed = true
+        val vm = viewModel(Directory(), downloadService = DownloadSpeedService { _, _ ->
+            flow {
+                if (failed) throw DownloadException(DownloadFailure.Unauthorized)
+                emit(DownloadUpdate.Finished(SpeedMeasurement(100.0, 187_500_000, 15_000)))
+            }
+        })
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        assertEquals(TestPhase.Error, vm.state.value.phase)
+        assertEquals(DownloadFailure.Unauthorized, vm.state.value.downloadFailure)
+        failed = false
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        assertEquals(TestPhase.Finished, vm.state.value.phase)
+        assertNull(vm.state.value.downloadFailure)
+        assertEquals(100.0, vm.state.value.download!!.averageMbps, 0.000001)
+    }
+
+    @Test
+    fun `stop and exit cancel download and reset progress`() = runTest {
+        for (intent in listOf(SpeedTestIntent.Stop, SpeedTestIntent.ScreenLeft)) {
+            var cancelled = false
+            val vm = viewModel(Directory(), downloadService = DownloadSpeedService { _, _ ->
+                flow {
+                    try {
+                        emit(DownloadUpdate.Progress(SpeedMeasurement(10.0, 625_000, 500)))
+                        awaitCancellation()
+                    } finally {
+                        cancelled = true
+                    }
+                }
+            })
+            vm.onIntent(SpeedTestIntent.Start)
+            advanceUntilIdle()
+            assertEquals(TestPhase.Measuring, vm.state.value.phase)
+            vm.onIntent(intent)
+            advanceUntilIdle()
+            assertTrue(cancelled)
+            assertEquals(TestPhase.Idle, vm.state.value.phase)
+            assertNull(vm.state.value.download)
+        }
     }
 
     private class Directory(var empty: Boolean = false) : ServerDirectoryRepository {

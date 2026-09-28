@@ -14,7 +14,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -23,20 +22,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.igordanilcenko.speedtest.R
 import com.igordanilcenko.speedtest.domain.DirectoryFailure
+import com.igordanilcenko.speedtest.domain.DownloadFailure
 import com.igordanilcenko.speedtest.domain.LocationFailure
+import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
 import com.igordanilcenko.speedtest.domain.model.Coordinates
-import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.model.SelectedServer
 import com.igordanilcenko.speedtest.domain.model.SpeedMeasurement
-import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
 
 @Composable
 fun SpeedTestScreen(
@@ -87,13 +86,13 @@ fun SpeedTestScreen(
                     )
                     if (state.isRunning) CircularProgressIndicator()
                     state.download?.let {
-                        DownloadContent(it, state.phase == TestPhase.Finished, state.phase == TestPhase.Measuring,
-                            state.isDemo, modifier = Modifier.fillMaxWidth())
+                        DownloadContent(
+                            it, state.phase == TestPhase.Finished, state.phase == TestPhase.Measuring,
+                            modifier = Modifier.fillMaxWidth()
+                        )
                     }
                     if (state.selectedServer != null) {
                         SelectedServerContent(state.selectedServer, modifier = Modifier.fillMaxWidth())
-                    } else if (state.nodes.isNotEmpty()) {
-                        NearbyNodesContent(state.nodes, modifier = Modifier.fillMaxWidth())
                     }
                     Button(
                         onClick = { onIntent(if (state.isRunning) SpeedTestIntent.Stop else SpeedTestIntent.Start) },
@@ -114,16 +113,17 @@ private fun DownloadContent(
     measurement: SpeedMeasurement,
     finished: Boolean,
     running: Boolean,
-    isDemo: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        if (isDemo) Text(stringResource(R.string.demo_data), color = MaterialTheme.colorScheme.error)
         Text(stringResource(if (finished) R.string.average_speed else R.string.download_speed))
-        Text(stringResource(R.string.speed_value, if (finished) measurement.averageMbps else measurement.currentMbps),
-            style = MaterialTheme.typography.headlineMedium)
+        Text(
+            stringResource(R.string.speed_value, if (finished) measurement.averageMbps else measurement.currentMbps),
+            style = MaterialTheme.typography.headlineMedium
+        )
         if (running) {
-            val remaining = ((MeasureDownloadSpeed.duration.inWholeMilliseconds - measurement.elapsedMillis).coerceAtLeast(0) + 999) / 1000
+            val remaining =
+                ((MeasureDownloadSpeed.duration.inWholeMilliseconds - measurement.elapsedMillis).coerceAtLeast(0) + 999) / 1000
             Text(pluralStringResource(R.plurals.seconds_remaining, remaining.toInt(), remaining))
         }
     }
@@ -136,20 +136,6 @@ private fun SelectedServerContent(server: SelectedServer, modifier: Modifier = M
         Text("${server.node.host}:${server.node.port}", color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(stringResource(R.string.ping_response_time), style = MaterialTheme.typography.labelLarge)
         Text(stringResource(R.string.ping_value, server.pingMs), style = MaterialTheme.typography.headlineMedium)
-    }
-}
-
-@Composable
-private fun NearbyNodesContent(nodes: List<NearbyNode>, modifier: Modifier = Modifier) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        nodes.forEach { nearby ->
-            Column(modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(nearby.node.name, style = MaterialTheme.typography.titleMedium)
-                Text("${nearby.node.host}:${nearby.node.port}", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(stringResource(R.string.distance_km, nearby.distanceKm))
-            }
-            HorizontalDivider()
-        }
     }
 }
 
@@ -185,15 +171,24 @@ private val SpeedTestUiState.status: Int
         TestPhase.ServerReady -> R.string.selected_server
         TestPhase.Measuring -> R.string.measuring
         TestPhase.Finished -> R.string.finished
-        TestPhase.Error -> if (pingFailed) R.string.no_ping_replies else when (failure) {
-            DirectoryFailure.NoServers -> R.string.no_servers
-            DirectoryFailure.Unavailable -> R.string.directory_unavailable
-            DirectoryFailure.InvalidResponse -> R.string.directory_invalid
-            null -> when (locationFailure) {
-                LocationFailure.Unavailable -> R.string.location_unavailable
-                LocationFailure.Disabled -> R.string.location_disabled
-                LocationFailure.PermissionDenied -> R.string.location_permission_denied
-                null -> R.string.test_error
+        TestPhase.Error -> when (downloadFailure) {
+            DownloadFailure.TokenRequest -> R.string.download_token_error
+            DownloadFailure.InvalidHello -> R.string.download_hello_error
+            DownloadFailure.Unauthorized -> R.string.download_unauthorized
+            DownloadFailure.Connection -> R.string.download_connection_error
+            DownloadFailure.TruncatedResponse -> R.string.download_truncated
+            DownloadFailure.Timeout -> R.string.download_timeout
+            DownloadFailure.InvalidResponse -> R.string.download_invalid
+            null -> if (pingFailed) R.string.no_ping_replies else when (failure) {
+                DirectoryFailure.NoServers -> R.string.no_servers
+                DirectoryFailure.Unavailable -> R.string.directory_unavailable
+                DirectoryFailure.InvalidResponse -> R.string.directory_invalid
+                null -> when (locationFailure) {
+                    LocationFailure.Unavailable -> R.string.location_unavailable
+                    LocationFailure.Disabled -> R.string.location_disabled
+                    LocationFailure.PermissionDenied -> R.string.location_permission_denied
+                    null -> R.string.test_error
+                }
             }
         }
     }
@@ -204,12 +199,6 @@ private val previewNode = Node(
     host = "prg.speedtest.net",
     port = 8080,
     coordinates = Coordinates(50.08, 14.43)
-)
-
-private val previewNodes = listOf(
-    NearbyNode(previewNode, 5.2),
-    NearbyNode(previewNode.copy(id = "2", name = "Berlin - Telekom"), 280.0),
-    NearbyNode(previewNode.copy(id = "3", name = "Vienna - A1"), 250.0)
 )
 
 @Composable
@@ -263,7 +252,7 @@ private fun PreviewLocating() = SpeedTestPreviewWrapper {
 @Composable
 private fun PreviewFindingNodes() = SpeedTestPreviewWrapper {
     SpeedTestScreen(
-        state = SpeedTestUiState(phase = TestPhase.FindingNodes, nodes = previewNodes),
+        state = SpeedTestUiState(phase = TestPhase.FindingNodes),
         onIntent = {}
     )
 }
@@ -272,35 +261,33 @@ private fun PreviewFindingNodes() = SpeedTestPreviewWrapper {
 @Composable
 private fun PreviewPinging() = SpeedTestPreviewWrapper {
     SpeedTestScreen(
-        state = SpeedTestUiState(phase = TestPhase.Pinging, nodes = previewNodes),
+        state = SpeedTestUiState(phase = TestPhase.Pinging),
         onIntent = {}
     )
 }
 
-@Preview(showBackground = true, name = "Download: Demo Progress")
+@Preview(showBackground = true, name = "Download: Progress")
 @Composable
 private fun PreviewDownloadProgress() = SpeedTestPreviewWrapper {
     SpeedTestScreen(
         state = SpeedTestUiState(
             phase = TestPhase.Measuring,
-            selectedServer = SelectedServer(previewNodes.first().node, 12.5),
+            selectedServer = SelectedServer(previewNode, 12.5),
             download = SpeedMeasurement(64.0, 40_000_000, 5_000),
-            isDemo = true,
             locationPermission = LocationPermission.Granted,
         ),
         onIntent = {},
     )
 }
 
-@Preview(showBackground = true, name = "Download: Demo Result")
+@Preview(showBackground = true, name = "Download: Result")
 @Composable
 private fun PreviewDownloadResult() = SpeedTestPreviewWrapper {
     SpeedTestScreen(
         state = SpeedTestUiState(
             phase = TestPhase.Finished,
-            selectedServer = SelectedServer(previewNodes.first().node, 12.5),
+            selectedServer = SelectedServer(previewNode, 12.5),
             download = SpeedMeasurement(64.0, 120_000_000, 15_000),
-            isDemo = true,
             locationPermission = LocationPermission.Granted,
         ),
         onIntent = {},

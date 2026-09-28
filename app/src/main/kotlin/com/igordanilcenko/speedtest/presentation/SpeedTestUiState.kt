@@ -1,8 +1,8 @@
 package com.igordanilcenko.speedtest.presentation
 
 import com.igordanilcenko.speedtest.domain.DirectoryFailure
+import com.igordanilcenko.speedtest.domain.DownloadFailure
 import com.igordanilcenko.speedtest.domain.LocationFailure
-import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import com.igordanilcenko.speedtest.domain.model.SelectedServer
 import com.igordanilcenko.speedtest.domain.model.SpeedMeasurement
 
@@ -12,11 +12,10 @@ enum class LocationPermission { Unknown, NotRequested, Granted, Denied }
 data class SpeedTestUiState(
     val phase: TestPhase = TestPhase.Idle,
     val download: SpeedMeasurement? = null,
-    val isDemo: Boolean = false,
-    val nodes: List<NearbyNode> = emptyList(),
     val selectedServer: SelectedServer? = null,
     val pingFailed: Boolean = false,
     val failure: DirectoryFailure? = null,
+    val downloadFailure: DownloadFailure? = null,
     val locationPermission: LocationPermission = LocationPermission.Unknown,
     val locationEnabled: Boolean = true,
     val locationFailure: LocationFailure? = null,

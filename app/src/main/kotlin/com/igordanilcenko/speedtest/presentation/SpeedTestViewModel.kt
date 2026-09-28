@@ -3,12 +3,13 @@ package com.igordanilcenko.speedtest.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.igordanilcenko.speedtest.domain.DirectoryException
+import com.igordanilcenko.speedtest.domain.DownloadException
 import com.igordanilcenko.speedtest.domain.LocationException
 import com.igordanilcenko.speedtest.domain.LocationFailure
 import com.igordanilcenko.speedtest.domain.intent.FindNearestNodes
+import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
 import com.igordanilcenko.speedtest.domain.intent.NodeDiscoveryUpdate
 import com.igordanilcenko.speedtest.domain.intent.SelectLowestPingServer
-import com.igordanilcenko.speedtest.domain.intent.MeasureDownloadSpeed
 import com.igordanilcenko.speedtest.domain.model.DownloadUpdate
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import kotlinx.coroutines.Job
@@ -91,8 +92,8 @@ class SpeedTestViewModel(
                         is NodeDiscoveryUpdate.Ready -> {
                             log(formatNearbyNodes(update.nodes))
                             log("[Ping] Measuring ICMP RTT for ${update.nodes.size} candidates")
-                            mutableState.value = state.value.copy(phase = TestPhase.Pinging, nodes = update.nodes)
-                            val selected = selectLowestPingServer(update.nodes)
+                            mutableState.value = state.value.copy(phase = TestPhase.Pinging)
+                            val selected = selectLowestPingServer(update.nodes, log)
                             currentCoroutineContext().ensureActive()
                             log(
                                 if (selected == null) "[Ping] Failed: no candidate returned a valid ICMP measurement"
@@ -109,17 +110,13 @@ class SpeedTestViewModel(
                 }
                 val selected = state.value.selectedServer ?: return@launch
                 mutableState.value = state.value.copy(phase = TestPhase.Measuring)
-                log("[Download] Starting 15-second download test for ${selected.node.host}")
+                log("[Download] Preparing selected server ${selected.node.host}:${selected.node.port}")
                 measureDownloadSpeed(selected.node).collect { update ->
                     currentCoroutineContext().ensureActive()
                     mutableState.value = state.value.copy(
                         phase = if (update is DownloadUpdate.Finished) TestPhase.Finished else TestPhase.Measuring,
                         download = update.measurement,
-                        isDemo = update.isDemo,
                     )
-                    if (update is DownloadUpdate.Finished) {
-                        log("[Download] Finished: average=${update.measurement.averageMbps} Mbps, demo=${update.isDemo}")
-                    }
                 }
             } catch (error: Exception) {
                 if (!currentCoroutineContext().isActive) log("[Run] Cancelled")
@@ -129,6 +126,7 @@ class SpeedTestViewModel(
                             when (error) {
                                 is LocationException -> " (${error.failure})"
                                 is DirectoryException -> " (${error.failure})"
+                                is DownloadException -> " (${error.failure})"
                                 else -> ""
                             }
                 )
@@ -136,6 +134,7 @@ class SpeedTestViewModel(
                 mutableState.value = state.value.copy(
                     phase = TestPhase.Error,
                     failure = (error as? DirectoryException)?.failure,
+                    downloadFailure = (error as? DownloadException)?.failure,
                     locationFailure = locationFailure,
                     locationPermission = if (locationFailure == LocationFailure.PermissionDenied)
                         LocationPermission.Denied else state.value.locationPermission,
@@ -147,12 +146,11 @@ class SpeedTestViewModel(
 }
 
 internal fun formatNearbyNodes(nodes: List<NearbyNode>): String = buildString {
-    append("[Discovery] Nearest servers (${nodes.size}), sorted by distance")
+    append("[Discovery] Geographic candidates (${nodes.size}); selection follows ICMP measurement")
     nodes.sortedBy { it.distanceKm }.forEachIndexed { index, nearby ->
         val name = nearby.node.name.replace('\n', ' ').replace('\r', ' ').take(120)
         val host = nearby.node.host.replace('\n', ' ').replace('\r', ' ').take(253)
         append("\n  ${index + 1}. ")
-        if (index == 0) append("[NEAREST] ")
         append("$name | $host:${nearby.node.port} | ")
         append(String.format(Locale.US, "%.2f km", nearby.distanceKm))
     }

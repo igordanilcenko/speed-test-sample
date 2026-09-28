@@ -10,6 +10,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -42,7 +43,14 @@ class SelectLowestPingServerTest {
         val select = SelectLowestPingServer { host ->
             results[host.removePrefix("host").substringBefore('.').toInt()]
         }
-        assertEquals("4", select((0..4).map(::node))?.node?.id)
+        val logs = mutableListOf<String>()
+        assertEquals("4", select((0..4).map(::node), logs::add)?.node?.id)
+        val resultsLog = logs.single()
+        assertTrue(resultsLog.contains("host0.test:8080 | no reply"))
+        assertTrue(resultsLog.contains("host1.test:8080 | ICMP unavailable"))
+        assertTrue(resultsLog.contains("host2.test:8080 | invalid RTT"))
+        assertTrue(resultsLog.contains("host3.test:8080 | invalid RTT"))
+        assertTrue(resultsLog.contains("host4.test:8080 | 0.100 ms"))
     }
 
     @Test
