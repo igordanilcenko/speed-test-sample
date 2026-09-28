@@ -174,6 +174,7 @@ class SpeedTestViewModelTest {
     private fun viewModel(
         directory: ServerDirectoryRepository,
         locationRepository: LocationRepository = location,
+        log: (String) -> Unit = {},
         pingService: PingService = PingService { host ->
             delay(100)
             PingResult.Success(10.0 - host.removePrefix("server").substringBefore('.').toInt())
@@ -181,6 +182,7 @@ class SpeedTestViewModelTest {
     ) = SpeedTestViewModel(
         FindNearestNodes(directory, locationRepository, dispatcher),
         SelectLowestPingServer(pingService),
+        log,
     ).apply {
         onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, true))
     }
@@ -238,6 +240,31 @@ class SpeedTestViewModelTest {
         assertFalse(vm.state.value.pingFailed)
         vm.onIntent(SpeedTestIntent.Stop)
         assertNull(vm.state.value.selectedServer)
+    }
+
+    @Test fun `logs location success candidate list and lowest ping selection in order`() = runTest {
+        val logs = mutableListOf<String>()
+        val vm = viewModel(Directory(), log = { logs += it })
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        val located = logs.indexOfFirst { it.contains("Location received") }
+        val candidates = logs.indexOfFirst { it.contains("Nearest servers (5)") }
+        val selected = logs.indexOfFirst { it.contains("Selected lowest RTT") }
+        assertTrue(located in 0..<candidates && selected > candidates)
+        assertTrue(logs[candidates].contains("1. [NEAREST] Server 0 | server0.test:80 | 0.00 km"))
+        assertEquals(6, logs[candidates].lines().size)
+    }
+
+    @Test fun `logs location failure reason without starting server lookup`() = runTest {
+        val logs = mutableListOf<String>()
+        val denied = object : LocationRepository {
+            override suspend fun getCurrentCoordinates(): Coordinates = throw LocationException(LocationFailure.PermissionDenied)
+        }
+        val vm = viewModel(Directory(), denied, log = { logs += it })
+        vm.onIntent(SpeedTestIntent.Start)
+        advanceUntilIdle()
+        assertTrue(logs.any { it.contains("LocationException (PermissionDenied)") })
+        assertFalse(logs.any { it.contains("loading server directory") })
     }
 
     private class Directory(var empty: Boolean = false) : ServerDirectoryRepository {

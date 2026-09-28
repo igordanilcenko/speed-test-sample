@@ -8,9 +8,12 @@ import com.igordanilcenko.speedtest.domain.DirectoryException
 import com.igordanilcenko.speedtest.domain.NodeDiscoveryUpdate
 import com.igordanilcenko.speedtest.domain.LocationException
 import com.igordanilcenko.speedtest.domain.LocationFailure
+import com.igordanilcenko.speedtest.domain.model.NearbyNode
+import java.util.Locale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -18,6 +21,7 @@ import kotlinx.coroutines.launch
 class SpeedTestViewModel(
     private val findNearestNodes: FindNearestNodes,
     private val selectLowestPingServer: SelectLowestPingServer,
+    private val log: (String) -> Unit = {},
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SpeedTestUiState())
     val state = mutableState.asStateFlow()
@@ -27,11 +31,13 @@ class SpeedTestViewModel(
         when (intent) {
             SpeedTestIntent.Start -> start()
             SpeedTestIntent.Stop, SpeedTestIntent.ScreenLeft -> {
+                log("[Run] Reset requested: $intent")
                 reset()
             }
             is SpeedTestIntent.LocationAccessChanged -> {
                 if (intent.permission != state.value.locationPermission ||
                     intent.locationEnabled != state.value.locationEnabled) {
+                    log("[Location] Access changed: permission=${intent.permission}, enabled=${intent.locationEnabled}")
                     reset()
                     mutableState.value = state.value.copy(
                         locationPermission = intent.permission,
@@ -52,7 +58,11 @@ class SpeedTestViewModel(
     }
 
     private fun start() {
-        if (!state.value.canStart || state.value.locationPermission != LocationPermission.Granted) return
+        if (!state.value.canStart || state.value.locationPermission != LocationPermission.Granted) {
+            log("[Run] Start blocked: permission=${state.value.locationPermission}, locationEnabled=${state.value.locationEnabled}, phase=${state.value.phase}")
+            return
+        }
+        log("[Run] Starting server discovery")
         reset()
         mutableState.value = state.value.copy(phase = TestPhase.Locating)
         testJob = viewModelScope.launch {
@@ -60,12 +70,22 @@ class SpeedTestViewModel(
                 findNearestNodes().collect { update ->
                     currentCoroutineContext().ensureActive()
                     mutableState.value = when (update) {
-                        NodeDiscoveryUpdate.Locating -> state.value.copy(phase = TestPhase.Locating)
-                        NodeDiscoveryUpdate.Loading -> state.value.copy(phase = TestPhase.FindingNodes)
+                        NodeDiscoveryUpdate.Locating -> {
+                            log("[Discovery] Obtaining user location")
+                            state.value.copy(phase = TestPhase.Locating)
+                        }
+                        NodeDiscoveryUpdate.Loading -> {
+                            log("[Discovery] Location received; loading server directory")
+                            state.value.copy(phase = TestPhase.FindingNodes)
+                        }
                         is NodeDiscoveryUpdate.Ready -> {
+                            log(formatNearbyNodes(update.nodes))
+                            log("[Ping] Measuring ICMP RTT for ${update.nodes.size} candidates")
                             mutableState.value = state.value.copy(phase = TestPhase.Pinging, nodes = update.nodes)
                             val selected = selectLowestPingServer(update.nodes)
                             currentCoroutineContext().ensureActive()
+                            log(if (selected == null) "[Ping] Failed: no candidate returned a valid ICMP measurement"
+                                else "[Ping] Selected lowest RTT: ${selected.node.host}:${selected.node.port}, ${String.format(Locale.US, "%.3f", selected.pingMs)} ms")
                             state.value.copy(
                                 phase = if (selected == null) TestPhase.Error else TestPhase.ServerReady,
                                 selectedServer = selected,
@@ -75,7 +95,14 @@ class SpeedTestViewModel(
                     }
                 }
             } catch (error: Exception) {
+                if (!currentCoroutineContext().isActive) log("[Run] Cancelled")
                 currentCoroutineContext().ensureActive()
+                log("[Run] Failed during ${state.value.phase}: ${error.javaClass.simpleName}" +
+                    when (error) {
+                        is LocationException -> " (${error.failure})"
+                        is DirectoryException -> " (${error.failure})"
+                        else -> ""
+                    })
                 val locationFailure = (error as? LocationException)?.failure
                 mutableState.value = state.value.copy(
                     phase = TestPhase.Error,
@@ -87,5 +114,17 @@ class SpeedTestViewModel(
                 )
             }
         }
+    }
+}
+
+internal fun formatNearbyNodes(nodes: List<NearbyNode>): String = buildString {
+    append("[Discovery] Nearest servers (${nodes.size}), sorted by distance")
+    nodes.sortedBy { it.distanceKm }.forEachIndexed { index, nearby ->
+        val name = nearby.node.name.replace('\n', ' ').replace('\r', ' ').take(120)
+        val host = nearby.node.host.replace('\n', ' ').replace('\r', ' ').take(253)
+        append("\n  ${index + 1}. ")
+        if (index == 0) append("[NEAREST] ")
+        append("$name | $host:${nearby.node.port} | ")
+        append(String.format(Locale.US, "%.2f km", nearby.distanceKm))
     }
 }

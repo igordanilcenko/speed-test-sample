@@ -1,6 +1,8 @@
 package com.igordanilcenko.speedtest
 
 import android.os.Bundle
+import android.content.pm.ApplicationInfo
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -23,6 +25,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        val debug = applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
+        val log: (String) -> Unit = { message -> if (debug) Log.d("SpeedTest", message) }
         setContent {
             MaterialTheme(colorScheme = if (isSystemInDarkTheme()) darkColorScheme() else lightColorScheme()) {
                 val viewModel: SpeedTestViewModel = viewModel(factory = viewModelFactory {
@@ -30,9 +34,10 @@ class MainActivity : ComponentActivity() {
                         SpeedTestViewModel(
                             findNearestNodes = FindNearestNodes(
                                 repository = HttpServerDirectoryRepository.create(),
-                                locationRepository = AndroidLocationRepository(applicationContext)
+                                locationRepository = AndroidLocationRepository(applicationContext, log)
                             ),
                             selectLowestPingServer = SelectLowestPingServer(AndroidPingService()),
+                            log = log,
                         )
                     }
                 })
