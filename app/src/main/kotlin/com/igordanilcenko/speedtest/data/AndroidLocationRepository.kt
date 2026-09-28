@@ -12,9 +12,9 @@ import com.igordanilcenko.speedtest.domain.LocationException
 import com.igordanilcenko.speedtest.domain.LocationFailure
 import com.igordanilcenko.speedtest.domain.LocationRepository
 import com.igordanilcenko.speedtest.domain.model.Coordinates
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeoutOrNull
-import kotlinx.coroutines.CancellationException
 import kotlin.coroutines.resume
 
 class AndroidLocationRepository(context: Context, private val log: (String) -> Unit = {}) : LocationRepository {
@@ -24,13 +24,14 @@ class AndroidLocationRepository(context: Context, private val log: (String) -> U
     override suspend fun getCurrentCoordinates(): Coordinates {
         try {
             log("[Location] Starting discovery (Approximate)")
-            
+
             if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION)
-                != PackageManager.PERMISSION_GRANTED) {
+                != PackageManager.PERMISSION_GRANTED
+            ) {
                 log("[Location] Failed: ACCESS_COARSE_LOCATION not granted")
                 throw LocationException(LocationFailure.PermissionDenied)
             }
-            
+
             if (!LocationManagerCompat.isLocationEnabled(manager)) {
                 log("[Location] Failed: location services disabled")
                 throw LocationException(LocationFailure.Disabled)

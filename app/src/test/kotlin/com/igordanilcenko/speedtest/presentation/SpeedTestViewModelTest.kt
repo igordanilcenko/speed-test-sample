@@ -1,7 +1,14 @@
 package com.igordanilcenko.speedtest.presentation
 
 import androidx.lifecycle.ViewModelStore
-import com.igordanilcenko.speedtest.domain.*
+import com.igordanilcenko.speedtest.domain.DirectoryFailure
+import com.igordanilcenko.speedtest.domain.LocationException
+import com.igordanilcenko.speedtest.domain.LocationFailure
+import com.igordanilcenko.speedtest.domain.LocationRepository
+import com.igordanilcenko.speedtest.domain.PingService
+import com.igordanilcenko.speedtest.domain.ServerDirectoryRepository
+import com.igordanilcenko.speedtest.domain.intent.FindNearestNodes
+import com.igordanilcenko.speedtest.domain.intent.SelectLowestPingServer
 import com.igordanilcenko.speedtest.domain.model.Coordinates
 import com.igordanilcenko.speedtest.domain.model.Node
 import com.igordanilcenko.speedtest.domain.model.PingResult
@@ -9,9 +16,18 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.*
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
 import org.junit.After
-import org.junit.Assert.*
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -23,10 +39,18 @@ class SpeedTestViewModelTest {
         override suspend fun getCurrentCoordinates() = coordinates
     }
 
-    @Before fun setUp() { Dispatchers.setMain(dispatcher) }
-    @After fun tearDown() { Dispatchers.resetMain() }
+    @Before
+    fun setUp() {
+        Dispatchers.setMain(dispatcher)
+    }
 
-    @Test fun `start obtains location and finishes with five sorted candidates`() = runTest {
+    @After
+    fun tearDown() {
+        Dispatchers.resetMain()
+    }
+
+    @Test
+    fun `start obtains location and finishes with five sorted candidates`() = runTest {
         val directory = Directory()
         val vm = viewModel(directory)
         vm.onIntent(SpeedTestIntent.Start)
@@ -43,7 +67,8 @@ class SpeedTestViewModelTest {
         assertEquals(result, vm.state.value)
     }
 
-    @Test fun `stop and exit cancel request and reset without stale results`() = runTest {
+    @Test
+    fun `stop and exit cancel request and reset without stale results`() = runTest {
         for (intent in listOf(SpeedTestIntent.Stop, SpeedTestIntent.ScreenLeft)) {
             val directory = Directory()
             val vm = viewModel(directory)
@@ -57,7 +82,8 @@ class SpeedTestViewModelTest {
         }
     }
 
-    @Test fun `clearing viewmodel cancels directory request`() = runTest {
+    @Test
+    fun `clearing viewmodel cancels directory request`() = runTest {
         val directory = Directory()
         val vm = viewModel(directory)
         val store = ViewModelStore().apply { put("test", vm) }
@@ -68,7 +94,8 @@ class SpeedTestViewModelTest {
         assertTrue(directory.cancelled)
     }
 
-    @Test fun `double start is ignored and immediate restart works`() = runTest {
+    @Test
+    fun `double start is ignored and immediate restart works`() = runTest {
         val directory = Directory()
         val vm = viewModel(directory)
         vm.onIntent(SpeedTestIntent.Start)
@@ -82,7 +109,8 @@ class SpeedTestViewModelTest {
         assertEquals(TestPhase.ServerReady, vm.state.value.phase)
     }
 
-    @Test fun `empty directory shows error and can be retried`() = runTest {
+    @Test
+    fun `empty directory shows error and can be retried`() = runTest {
         val directory = Directory(empty = true)
         val vm = viewModel(directory)
         vm.onIntent(SpeedTestIntent.Start)
@@ -94,7 +122,8 @@ class SpeedTestViewModelTest {
         assertEquals(TestPhase.ServerReady, vm.state.value.phase)
     }
 
-    @Test fun `permission denial blocks start and grant only enables it`() = runTest {
+    @Test
+    fun `permission denial blocks start and grant only enables it`() = runTest {
         val directory = Directory()
         val vm = viewModel(directory)
         vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Denied, true))
@@ -109,7 +138,8 @@ class SpeedTestViewModelTest {
         assertEquals(0, directory.requests)
     }
 
-    @Test fun `location disabled blocks start until enabled`() = runTest {
+    @Test
+    fun `location disabled blocks start until enabled`() = runTest {
         val vm = viewModel(Directory())
         vm.onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, false))
         assertFalse(vm.state.value.canStart)
@@ -117,12 +147,17 @@ class SpeedTestViewModelTest {
         assertTrue(vm.state.value.canStart)
     }
 
-    @Test fun `discovery waits for coordinates and exit cancels location request`() = runTest {
+    @Test
+    fun `discovery waits for coordinates and exit cancels location request`() = runTest {
         var cancelled = false
         val directory = Directory()
         val pendingLocation = object : LocationRepository {
             override suspend fun getCurrentCoordinates(): Coordinates {
-                try { awaitCancellation() } finally { cancelled = true }
+                try {
+                    awaitCancellation()
+                } finally {
+                    cancelled = true
+                }
             }
         }
         val vm = viewModel(directory, pendingLocation)
@@ -135,7 +170,8 @@ class SpeedTestViewModelTest {
         assertTrue(cancelled)
     }
 
-    @Test fun `location failure prevents directory request`() = runTest {
+    @Test
+    fun `location failure prevents directory request`() = runTest {
         for (failure in LocationFailure.entries) {
             val directory = Directory()
             val failedLocation = object : LocationRepository {
@@ -149,7 +185,8 @@ class SpeedTestViewModelTest {
         }
     }
 
-    @Test fun `timeout ends loading and allows retry`() = runTest {
+    @Test
+    fun `timeout ends loading and allows retry`() = runTest {
         val directory = object : ServerDirectoryRepository {
             override suspend fun getNodes(): List<Node> = awaitCancellation()
         }
@@ -160,7 +197,8 @@ class SpeedTestViewModelTest {
         assertTrue(vm.state.value.canStart)
     }
 
-    @Test fun `permission revocation cancels active request`() = runTest {
+    @Test
+    fun `permission revocation cancels active request`() = runTest {
         val directory = Directory()
         val vm = viewModel(directory)
         vm.onIntent(SpeedTestIntent.Start)
@@ -187,12 +225,19 @@ class SpeedTestViewModelTest {
         onIntent(SpeedTestIntent.LocationAccessChanged(LocationPermission.Granted, true))
     }
 
-    @Test fun `stop exit and permission revocation cancel all ping jobs`() = runTest {
-        for (intent in listOf(SpeedTestIntent.Stop, SpeedTestIntent.ScreenLeft,
-            SpeedTestIntent.LocationAccessChanged(LocationPermission.Denied, true))) {
+    @Test
+    fun `stop exit and permission revocation cancel all ping jobs`() = runTest {
+        for (intent in listOf(
+            SpeedTestIntent.Stop, SpeedTestIntent.ScreenLeft,
+            SpeedTestIntent.LocationAccessChanged(LocationPermission.Denied, true)
+        )) {
             var cancelled = 0
             val vm = viewModel(Directory(), pingService = PingService {
-                try { awaitCancellation() } finally { cancelled++ }
+                try {
+                    awaitCancellation()
+                } finally {
+                    cancelled++
+                }
             })
             vm.onIntent(SpeedTestIntent.Start)
             advanceTimeBy(500)
@@ -208,10 +253,15 @@ class SpeedTestViewModelTest {
         }
     }
 
-    @Test fun `clearing viewmodel cancels pings`() = runTest {
+    @Test
+    fun `clearing viewmodel cancels pings`() = runTest {
         var cancelled = 0
         val vm = viewModel(Directory(), pingService = PingService {
-            try { awaitCancellation() } finally { cancelled++ }
+            try {
+                awaitCancellation()
+            } finally {
+                cancelled++
+            }
         })
         val store = ViewModelStore().apply { put("test", vm) }
         vm.onIntent(SpeedTestIntent.Start)
@@ -222,7 +272,8 @@ class SpeedTestViewModelTest {
         assertEquals(5, cancelled)
     }
 
-    @Test fun `failed pings allow retry without stale selection`() = runTest {
+    @Test
+    fun `failed pings allow retry without stale selection`() = runTest {
         var reachable = false
         val vm = viewModel(Directory(), pingService = PingService {
             if (reachable) PingResult.Success(12.5) else PingResult.NoReply
@@ -242,7 +293,8 @@ class SpeedTestViewModelTest {
         assertNull(vm.state.value.selectedServer)
     }
 
-    @Test fun `logs location success candidate list and lowest ping selection in order`() = runTest {
+    @Test
+    fun `logs location success candidate list and lowest ping selection in order`() = runTest {
         val logs = mutableListOf<String>()
         val vm = viewModel(Directory(), log = { logs += it })
         vm.onIntent(SpeedTestIntent.Start)
@@ -255,10 +307,12 @@ class SpeedTestViewModelTest {
         assertEquals(6, logs[candidates].lines().size)
     }
 
-    @Test fun `logs location failure reason without starting server lookup`() = runTest {
+    @Test
+    fun `logs location failure reason without starting server lookup`() = runTest {
         val logs = mutableListOf<String>()
         val denied = object : LocationRepository {
-            override suspend fun getCurrentCoordinates(): Coordinates = throw LocationException(LocationFailure.PermissionDenied)
+            override suspend fun getCurrentCoordinates(): Coordinates =
+                throw LocationException(LocationFailure.PermissionDenied)
         }
         val vm = viewModel(Directory(), denied, log = { logs += it })
         vm.onIntent(SpeedTestIntent.Start)

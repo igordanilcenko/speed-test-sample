@@ -1,5 +1,6 @@
-package com.igordanilcenko.speedtest.domain
+package com.igordanilcenko.speedtest.domain.intent
 
+import com.igordanilcenko.speedtest.domain.PingService
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import com.igordanilcenko.speedtest.domain.model.PingResult
 import com.igordanilcenko.speedtest.domain.model.SelectedServer

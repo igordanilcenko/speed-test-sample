@@ -1,10 +1,14 @@
-package com.igordanilcenko.speedtest.domain
+package com.igordanilcenko.speedtest.domain.intent
 
+import com.igordanilcenko.speedtest.domain.DirectoryException
+import com.igordanilcenko.speedtest.domain.DirectoryFailure
+import com.igordanilcenko.speedtest.domain.LocationRepository
+import com.igordanilcenko.speedtest.domain.ServerDirectoryRepository
 import com.igordanilcenko.speedtest.domain.model.Coordinates
 import com.igordanilcenko.speedtest.domain.model.NearbyNode
 import com.igordanilcenko.speedtest.domain.model.Node
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
@@ -46,7 +50,7 @@ internal fun distanceKm(from: Coordinates, to: Coordinates): Double {
     val latitudeDelta = Math.toRadians(to.latitude - from.latitude)
     val longitudeDelta = Math.toRadians(to.longitude - from.longitude)
     val a = sin(latitudeDelta / 2).let { it * it } +
-        cos(Math.toRadians(from.latitude)) * cos(Math.toRadians(to.latitude)) *
-        sin(longitudeDelta / 2).let { it * it }
+            cos(Math.toRadians(from.latitude)) * cos(Math.toRadians(to.latitude)) *
+            sin(longitudeDelta / 2).let { it * it }
     return 2 * 6371.0088 * asin(sqrt(a.coerceIn(0.0, 1.0)))
 }

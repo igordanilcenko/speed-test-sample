@@ -43,13 +43,21 @@ fun SpeedTestScreen(
     onOpenPreferences: () -> Unit = {},
 ) {
     Scaffold(modifier = modifier) { insets ->
-        Box(Modifier.fillMaxSize().padding(insets), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .padding(insets), contentAlignment = Alignment.Center
+        ) {
             if (state.locationPermission == LocationPermission.Denied || !state.locationEnabled) {
                 LocationPermissionContent(
-                    message = stringResource(if (state.locationPermission == LocationPermission.Denied)
-                        R.string.location_permission_denied else R.string.location_disabled),
+                    message = stringResource(
+                        if (state.locationPermission == LocationPermission.Denied)
+                            R.string.location_permission_denied else R.string.location_disabled
+                    ),
                     onOpenPreferences = onOpenPreferences,
-                    modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth(),
+                    modifier = Modifier
+                        .widthIn(max = 600.dp)
+                        .fillMaxWidth(),
                 )
             } else if (state.phase == TestPhase.Idle) {
                 Button(
@@ -62,13 +70,18 @@ fun SpeedTestScreen(
                 }
             } else {
                 Column(
-                    modifier = Modifier.widthIn(max = 600.dp).fillMaxWidth()
-                        .verticalScroll(rememberScrollState()).padding(24.dp),
+                    modifier = Modifier
+                        .widthIn(max = 600.dp)
+                        .fillMaxWidth()
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp),
                     verticalArrangement = Arrangement.spacedBy(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
-                    Text(stringResource(state.status), textAlign = TextAlign.Center,
-                        style = MaterialTheme.typography.titleLarge)
+                    Text(
+                        stringResource(state.status), textAlign = TextAlign.Center,
+                        style = MaterialTheme.typography.titleLarge
+                    )
                     if (state.isRunning) CircularProgressIndicator()
                     if (state.selectedServer != null) {
                         SelectedServerContent(state.selectedServer, modifier = Modifier.fillMaxWidth())
@@ -120,7 +133,9 @@ private fun LocationPermissionContent(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()).padding(24.dp),
+        modifier = modifier
+            .verticalScroll(rememberScrollState())
+            .padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {

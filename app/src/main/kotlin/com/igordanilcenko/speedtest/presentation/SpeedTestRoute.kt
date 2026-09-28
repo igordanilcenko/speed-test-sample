@@ -20,8 +20,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.core.content.edit
@@ -49,14 +49,21 @@ fun SpeedTestRoute(
     var pendingStart by rememberSaveable { mutableStateOf(false) }
 
     fun refreshAccess() {
-        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) ==
-            PackageManager.PERMISSION_GRANTED
+        val granted = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
         val permission = when {
             granted -> LocationPermission.Granted
             preferences.getBoolean("requested", false) -> LocationPermission.Denied
             else -> LocationPermission.NotRequested
         }
-        viewModel.onIntent(SpeedTestIntent.LocationAccessChanged(permission, LocationManagerCompat.isLocationEnabled(manager)))
+        viewModel.onIntent(
+            SpeedTestIntent.LocationAccessChanged(
+                permission,
+                LocationManagerCompat.isLocationEnabled(manager)
+            )
+        )
     }
 
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -102,7 +109,10 @@ fun SpeedTestRoute(
         },
         onOpenPreferences = {
             val intent = if (state.locationPermission == LocationPermission.Denied) {
-                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                Intent(
+                    Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    Uri.fromParts("package", context.packageName, null)
+                )
             } else {
                 Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
             }

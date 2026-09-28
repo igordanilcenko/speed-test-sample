@@ -2,8 +2,6 @@ package com.igordanilcenko.speedtest.data
 
 import com.igordanilcenko.speedtest.domain.PingService
 import com.igordanilcenko.speedtest.domain.model.PingResult
-import java.io.IOException
-import kotlin.coroutines.resume
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -11,6 +9,8 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import java.io.IOException
+import kotlin.coroutines.resume
 
 class AndroidPingService(
     private val dispatcher: CoroutineDispatcher = Dispatchers.IO,
@@ -46,11 +46,13 @@ class AndroidPingService(
                             val output = running.inputStream.bufferedReader().use { it.readText() }
                             val exitCode = running.waitFor()
                             val latency = parseAveragePingMs(output)
-                            continuation.resume(when {
-                                exitCode in 0..1 && latency != null -> PingResult.Success(latency)
-                                exitCode == 1 -> PingResult.NoReply
-                                else -> PingResult.Unavailable
-                            })
+                            continuation.resume(
+                                when (exitCode) {
+                                    in 0..1 if latency != null -> PingResult.Success(latency)
+                                    1 -> PingResult.NoReply
+                                    else -> PingResult.Unavailable
+                                }
+                            )
                         }
                     } catch (_: IOException) {
                         continuation.resume(PingResult.Unavailable)
